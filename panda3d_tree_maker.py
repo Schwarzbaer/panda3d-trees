@@ -247,11 +247,13 @@ def stemletify(sheet):
             stemlet_split_rotation = 0.0
         else:
             if sd.split_rotate_mode == SplitRotation.HELICAL:
-                sheet.split_rotate_acc += (sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var) % 360
+                sheet.split_rotate_acc += sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var
             elif sd.split_rotate_mode == SplitRotation.COPLANAR:
-                sheet.split_rotate_acc += (sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var + 180) % 360
+                print(sd.split_rotate, sd.split_rotate_var)
+                sheet.split_rotate_acc += sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var + 180
             else:
                 raise ValueError("Unknown split_rotate_mode {}".format(sd.split_rotate_mode))
+            sheet.split_rotate_acc = sheet.split_rotate_acc % 360
             stemlet_split_rotation = sheet.split_rotate_acc
         # Split rotation around tree's z: stemlet_z_rotation
         if split_idx > 0: # FIXME: ...in contradiction to the paper
@@ -271,7 +273,7 @@ def stemletify(sheet):
         node.set_z(sheet.root_length)
         # Rotate splits around their parent
         node.set_h(stemlet_split_rotation)
-        # Bend (basic bend + split_angle
+        # Bend: basic bend + split_angle
         node.set_p(node, stemlet_bend)
         # Rotate splits around the tree's z
         node.set_hpr(
@@ -283,7 +285,7 @@ def stemletify(sheet):
         )
         
         # stemlet model
-        node.attach_new_node(geometry.line_art(stemlet_length, stemlet_diameter))
+        node.attach_new_node(geometry.line_art(stemlet_length, stemlet_diameter, sheet.rest_segments))
 
         # Child segments
         if sheet.rest_segments > 1:
@@ -329,7 +331,7 @@ def treeify(root, sd, rng):
 
 # Input
 
-def replace_tree(seed=None, tree_def=BoringTree):
+def replace_tree(tree_def=BoringTree, seed=None):
     if seed is None:
         seed = random.random()
 
@@ -369,5 +371,5 @@ base.add_task(rotate_tree)
 
 # Setup
 
-replace_tree(0)
+replace_tree(tree_def=WeepingWillow)
 base.run()

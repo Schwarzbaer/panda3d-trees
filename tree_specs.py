@@ -84,19 +84,23 @@ class BlackTupelo:
 
 
 class WeepingWillow:
-    shape           = cylindrical
-    segments        =   8.0
-    length          =  17.5
-    length_var      =   2.5
-    trunk_splits    =   2.0
-    splits          =   0.1
-    split_angle     =   3.0
-    split_angle_var =   0.0
-    bend            =   0.0
-    bend_back       = False
-    bend_var        = 120.0
-    diameter        =   1.0
-    diameter_var    =   0.0
+    shape             =  cylindrical
+    segments          =    8.0
+    length            =   15.0
+    length_var        =    5.0
+    trunk_splits      =    2.0
+    splits            =    0.1
+    split_angle       =    3.0
+    split_angle_var   =    0.0
+    split_tree_z      =    1.0
+    split_rotate_mode = SplitRotation.COPLANAR
+    split_rotate      =  120.0
+    split_rotate_var  =   30.0
+    bend              =    0.0
+    bend_back         =   20.0
+    bend_var          =  120.0
+    diameter          =    1.0
+    diameter_var      =    0.0
 
 
 class CaliforniaBlackOak:
