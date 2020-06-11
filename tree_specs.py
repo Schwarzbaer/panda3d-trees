@@ -40,7 +40,7 @@ class BoringTree:
     splits            =  1.0                    # nSegSplits
     split_angle       = 30.0                    # nSplitAngle
     split_angle_var   =  0.0                    # nSplitAngleV
-    split_tree_z      =  1.0                    # Ratio of "splits rotate around tree's z"; 0 for debugging, 1 for live
+    split_tree_z      =  0.0                    # Ratio of "splits rotate around tree's z"; 0 for debugging, 1 for live
     split_rotate_mode = SplitRotation.COPLANAR  # nRotate>=0: helical, else coplanar
     split_rotate      =  0.0                    # abs((n+1)Rotate)
     split_rotate_var  =  0.0                    #(n+1)RotateV

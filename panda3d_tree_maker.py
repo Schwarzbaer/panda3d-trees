@@ -231,8 +231,7 @@ def stemletify(sheet):
             if sd.split_rotate_mode == SplitRotation.HELICAL:
                 sheet.split_rotate_acc += sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var
             elif sd.split_rotate_mode == SplitRotation.COPLANAR:
-                print(sd.split_rotate, sd.split_rotate_var)
-                sheet.split_rotate_acc += sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var + 180
+                sheet.split_rotate_acc += -sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var + 180
             else:
                 raise ValueError("Unknown split_rotate_mode {}".format(sd.split_rotate_mode))
             sheet.split_rotate_acc = sheet.split_rotate_acc % 360
