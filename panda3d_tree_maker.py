@@ -130,24 +130,6 @@ tree_root = NodePath('autotree')
 #
 # This can be used to linearly change the down angle based on the position of the child along its parent, as with the Black Tupelo's main branches
 # seen in Plate 2b. Note how they are angled upward near the crown of the treeand angled downward near the bottom.
-#
-# if nRotate >= 0:
-#   each child formed along the parent is placed in a helical distribution by rotating about the z axis of its parent relative to the previous child
-#   by the angle (nRotate ± nRotateV).
-# else:
-#   each child is rotated about its parent's z-axis relative to its parent's y-axis by the angle (180+nRotate±nRotateV) on alternating sides of
-#   the parent branch. This allows for a nearly coplanar child stem distribution. Since the y-axis of any stem with a small downangle points back
-#   toward its parent, the planar distribution from such a stem is aligned with that parent.
-#   This makes it easy to design trees where sub-branches tend to spawn parallel to the ground surface.  This effect is most obvious in the tree
-#   shown in Plate 1v. Aono and Kunii go into detail about the proper divergence and branching angle [AONO84]. These correspond to our rotation and
-#   downangles, respectively. They note the Schimper-Braun law which states that this divergence angle is a fraction of 360 degrees based on a
-#   Fibonacci sequence of 1/2, 1/3, 2/5, 3/8, ... , resulting in possible angles of 180, 120,144, 135, and so on. Our results show that any number
-#   near 140 degrees works well in most situations.  Aono and Kunii also note that the branching angle (our down angle) appears to be smaller for
-#   branches that form later as the tree matures. De Reffye attributes this to gravity affecting the increased mass of older branches and simulates
-#   the effect including elastic curvature using Young's modulus [REFF88]. The change in the branching angle can result in large angles at the base
-#   of the tree and smaller angles along the height of the tree. We implement this linearly with the negative nDownAngleV as noted above.
-#   However, Aono and Kunii state that changing their model to implement this effect does not add much realism. We find the effect, as implemented
-#   in our model, to be very substantial, especially in dormant or sparsely foliated trees.
 
 
 class StemletSheet:
