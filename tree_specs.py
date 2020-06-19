@@ -26,33 +26,59 @@ def tend_flame(ratio):
         return 0.5 + 0.5 * (1.0 - ratio) / 0.3
 
 
+class SegmentType(Enum):
+    STEM = 0
+    LEAF = 1
+
+
 class SplitRotation(Enum):
     HELICAL = 0
     COPLANAR = 1
 
 
+# Boring Tree, used for debugging. Might also makes a good start for new trees.
+
+class BoringLeaves:
+    segment_type      = SegmentType.LEAF
+    segments          = 0
+
+
 class BoringTree:
+    segment_type      = SegmentType.STEM        # Is this a stem, or a leaf? (We coud also add blossoms / fruits here.
     shape             = cylindrical             # See table
-    segments          =  4                      # nCurveRes
+    taper             = 1.0                     # nTaper
+    flare             = 0.0                     # Flare
+    lobes             = 3                       # Lobes
+    lobe_depth        = 0.5                     # LobeDepth
+    segments          = 10                      # nCurveRes
     length            = 20.0                    # Scale
     length_var        =  2.0                    # ScaleV
     trunk_splits      = False                   # 0BaseSplits
-    splits            =  1.0                    # nSegSplits
+    splits            =  0.5                    # nSegSplits
     split_angle       = 30.0                    # nSplitAngle
     split_angle_var   =  0.0                    # nSplitAngleV
-    split_tree_z      =  0.0                    # Ratio of "splits rotate around tree's z"; 0 for debugging, 1 for live
-    split_rotate_mode = SplitRotation.COPLANAR  # nRotate>=0: helical, else coplanar
-    split_rotate      =  0.0                    # abs((n+1)Rotate)
+    split_tree_z      =  1.0                    # Ratio of "splits rotate around tree's z"; 0 for debugging, 1 for live
+    split_rotate_mode = SplitRotation.HELICAL   # nRotate>=0: helical, else coplanar
+    split_rotate      = 60.0                    # abs((n+1)Rotate)
     split_rotate_var  =  0.0                    #(n+1)RotateV
-    bend              = 45.0                    # nCurve
+    bend              =  0.0                    # nCurve
     bend_back         = False                   # nCurveBack
     bend_var          =  0.0                    # nCurveV
     diameter          =  1.0
     diameter_var      =  0.0
+    child_definition  = None
+    # child_definition  = BoringLeaves
 
+
+# Actual botanical trees
 
 class QuakingAspen:
+    segment_type      = SegmentType.STEM
     shape             = tend_flame
+    taper             =   1
+    flare             =   0.6
+    lobes             =   5
+    lobe_depth        =   0.07
     segments          =   3
     length            =  13.0
     length_var        =   3
@@ -69,10 +95,16 @@ class QuakingAspen:
     bend_var          =  20.0
     diameter          =   1.0
     diameter_var      =   0.0
+    child_definition  = None
 
 
 class BlackTupelo:
+    segment_type      = SegmentType.STEM
     shape             =  tapered_cylindrical
+    taper             =   1.1
+    flare             =   1.0
+    lobes             =   3
+    lobe_depth        =   0.1
     segments          =  10
     length            =  23.0
     length_var        =   5.0
@@ -89,10 +121,16 @@ class BlackTupelo:
     bend_var          =  40.0
     diameter          =   1.0
     diameter_var      =   0.0
+    child_definition  = None
 
 
 class WeepingWillow:
+    segment_type      = SegmentType.STEM
     shape             =  cylindrical
+    taper             =    1
+    flare             =    0.75
+    lobes             =    9
+    lobe_depth        =    0.03
     segments          =    8
     length            =   15.0
     length_var        =    5.0
@@ -109,10 +147,16 @@ class WeepingWillow:
     bend_var          =  120.0
     diameter          =    1.0
     diameter_var      =    0.0
+    child_definition  = None
 
 
 class CaliforniaBlackOak:
+    segment_type      = SegmentType.STEM
     shape             = hemispherical
+    taper             =   0.95
+    flare             =   1.2
+    lobes             =   5
+    lobe_depth        =   0.1
     segments          =   8
     length            =  10.0
     length_var        =  10.0
@@ -129,3 +173,4 @@ class CaliforniaBlackOak:
     bend_var          =  90.0
     diameter          =   1.0
     diameter_var      =   0.0
+    child_definition  = None

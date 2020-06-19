@@ -9,7 +9,8 @@ from panda3d.core import KeyboardButton
 from direct.showbase.ShowBase import ShowBase
 
 from tree_specs import QuakingAspen, BlackTupelo, WeepingWillow, CaliforniaBlackOak, BoringTree
-from tree_specs import SplitRotation
+from tree_specs import SplitRotation, SegmentType
+from style_def import Skeleton
 
 import geometry
 
@@ -129,19 +130,20 @@ tree_root = NodePath('autotree')
 #     downangle_child = nDownAngle ± abs(nDownAngleV * (1 - 2 * conical((length_parent - offset_child) / (length_parent - length_base))))
 #
 # This can be used to linearly change the down angle based on the position of the child along its parent, as with the Black Tupelo's main branches
-# seen in Plate 2b. Note how they are angled upward near the crown of the treeand angled downward near the bottom.
+# seen in Plate 2b. Note how they are angled upward near the crown of the tree and angled downward near the bottom.
 
 
 class StemletSheet:
     def __init__(self, tree_root_node, root_node=None, rest_segments=None, root_length=0.0, stem_definition=BoringTree, rng=0, splitting_acc=0.0,
-                 split_rotate_acc=0.0):
+                 split_rotate_acc=0.0, bend_debt=0.0, style=Skeleton):
         """
         tree_root_node
             NodePath of the root of the whole tree
         root_node
             The previous segment's NodePath. Defaults to tree_root_node
         rest_segments
-            Number of segments left to create in this stem. Defaults to the number of segments in stem_definition.
+            Number of segments left to create in this stem. Defaults to
+            the number of segments in stem_definition.
         root_length
             The previous segment's length. Defaults to 0.0
         stem_definition
@@ -149,9 +151,16 @@ class StemletSheet:
         rng
             Random seed to use for the next segment. Defaults to 0
         splitting_acc
-            Accumulated error for Floyd-Steinberg-ish error diffusion of stem split angles. Defaults to 0.0
+            Accumulated error for Floyd-Steinberg-ish error diffusion of
+            stem split angles. Defaults to 0.0
         split_rotate_acc
             Accumulated rotation of stem child segments
+        bend_debt
+            bending accumulated through splits, the inverse of which is
+            distributed over the rest of the stem, bending it back
+            towards the original stem's direction.
+        style
+            Style specification with parameters for geometry generation.
         """
         if rest_segments is None:
             rest_segments = stem_definition.segments
@@ -166,9 +175,24 @@ class StemletSheet:
         self.rng = rng
         self.splitting_acc = splitting_acc
         self.split_rotate_acc = split_rotate_acc
+        self.bend_debt = bend_debt
+        self.style = style
 
 
 def stemletify(sheet):
+    segment_type = sheet.stem_definition.segment_type
+    if segment_type == SegmentType.STEM:
+        return stemify(sheet)
+    elif segment_type == SegmentType.LEAF:
+        model = loader.load_model("models/smiley")
+        model.reparent_to(sheet.root_node)
+        model.set_scale(0.5)
+        return []
+    else:
+        raise ValueError("Unknown segment_type {}".format(segment_type))
+
+
+def stemify(sheet):
     """
     Takes a stemlet sheet, attaches relevant scene subgraphs to the 
     sheet's node, and returns a list of sheets for the next segments
@@ -209,7 +233,7 @@ def stemletify(sheet):
         # Segment length: segment_length
         stemlet_length = sd.length / sd.segments + gdrgn.uniform(-1, 1) * sd.length_var / sd.segments
 
-        # Basic bend: stemlet_bend
+        # Basic bend and split angle back bend: stemlet_bend, stemlet_debt_repayed
         if not sd.bend_back:
             stemlet_bend = sd.bend / sd.segments + gdrgn.uniform(-1, 1) * sd.bend_var / sd.segments
         else:
@@ -218,12 +242,17 @@ def stemletify(sheet):
                 stemlet_bend = sd.bend / (sd.segments / 2) + gdrgn.uniform(-1, 1) * sd.bend_var / sd.segments
             else:
                 stemlet_bend = -sd.bend_back / (sd.segments / 2) + gdrgn.uniform(-1, 1) * sd.bend_var / sd.segments
+        stemlet_debt_repayed = sheet.bend_debt / sheet.rest_segments
+        stemlet_bend -= stemlet_debt_repayed
         # Split angle: stemlet_bend
         if split_idx > 0:
             up = Vec3(0, 0, 1)
             local_tree_up = sheet.root_node.get_relative_vector(sheet.tree_root_node, up)
             declination = local_tree_up.angle_deg(up)
-            stemlet_bend += max(sd.split_angle + gdrgn.uniform(-1, 1) * sd.split_angle_var - declination, 0)
+            split_angle = max(sd.split_angle + gdrgn.uniform(-1, 1) * sd.split_angle_var - declination, 0)
+            stemlet_bend += split_angle
+        else:
+            split_angle = 0.0
         # Split children's rotation around the parent's Z: stemlet_split_rotation
         if split_idx == 0:
             stemlet_split_rotation = 0.0
@@ -245,8 +274,36 @@ def stemletify(sheet):
         else:
             stemlet_z_rotation = 0.0
                 
-        # Others
-        stemlet_diameter = sd.diameter + gdrgn.uniform(-1, 1) * sd.diameter_var
+        # Stem diameter
+        if sd.segment_type == SegmentType.STEM:
+            # Basic taper
+            base_diameter = sd.diameter + gdrgn.uniform(-1, 1) * sd.diameter_var
+            runlength = 1 - (sheet.rest_segments + 1) / (sd.segments + 1)  # Z
+            if sd.taper <= 1:
+                unit_taper = sd.taper
+            elif 1 < sd.taper <= 2:
+                unit_taper = 2 - sd.taper
+            else:
+                unit_taper = 0
+            taper_z = base_diameter * (1 - unit_taper * runlength)  # taper_z_top = 1 - (sheet.rest_segments) / (sd.segments + 1)
+            if sd.taper < 1:
+                stemlet_diameter = taper_z
+            else:
+                Z_2 = (1 - runlength) * sd.length
+                if sd.taper < 2 or Z_2 < taper_z:
+                    depth = 1
+                else:
+                    depth = sd.taper - 2
+                if sd.taper < 2:
+                    Z_3 = Z_2
+                else:
+                    Z_3 = abs(Z_2 - 2 * taper_z * int(Z_2 / (2 * taper_z) + 0.5))
+                if sd.taper < 2 and Z_3 >= taper_z:
+                    stemlet_diameter = taper_z
+                else:
+                    stemlet_diameter = (1 - depth) * taper_z + depth * math.sqrt(taper_z ** 2 - (Z_3 - taper_z) ** 2)
+            # Flare
+            stemlet_diameter *= sd.flare * (100 ** (1 - 8 * runlength) - 1) / 100 + 1
 
         # stemlet node
         node = sheet.root_node.attach_new_node('stemlet')
@@ -266,11 +323,23 @@ def stemletify(sheet):
         )
         
         # stemlet model
-        node.attach_new_node(geometry.line_art(stemlet_length, stemlet_diameter, sheet.rest_segments))
+        node.attach_new_node(
+            geometry.line_art(
+                sd,
+                stemlet_length,
+                stemlet_diameter,
+                sheet.rest_segments,
+                sheet.style,
+            ),
+        )
 
-        # Child segments
+        # Stem-continuing segments
         if sheet.rest_segments > 1:
-            child_sheet = dict(
+            if split_idx == 0:
+                split_rotate_acc = None
+            else:
+                split_rotate_acc = 0.0
+            child_sheet = StemletSheet(
                 tree_root_node  =sheet.tree_root_node,
                 root_node       =node,
                 rest_segments   =sheet.rest_segments - 1,
@@ -278,17 +347,34 @@ def stemletify(sheet):
                 stem_definition =sd,
                 rng             =gdrng_seed,
                 splitting_acc   =splitting_acc,
+                bend_debt       =sheet.bend_debt - stemlet_debt_repayed + split_angle,
+                split_rotate_acc=split_rotate_acc,
+                style           =sheet.style,
             )
-            if split_idx > 0:
-                child_sheet.update(dict(split_rotate_acc=0.0))
             child_sheets.append(child_sheet)
 
-    if child_sheets:
-        child_sheets[0]['split_rotate_acc'] = sheet.split_rotate_acc        
-    return [StemletSheet(**cs) for cs in child_sheets]
+        # Child stemlets
+        if sd.child_definition is not None:
+            child_node = node.attach_new_node('child')
+            child_node.set_pos(0, 0, stemlet_length)
+            child_node.set_p(45)
+            child_sheet = StemletSheet(
+                tree_root_node  =sheet.tree_root_node,
+                root_node       =child_node,
+                stem_definition =sd.child_definition,
+                rng             =gdrng_seed,
+                style           =sheet.style,
+            )
+            child_sheets.append(child_sheet)
+
+    for child in child_sheets:
+        if child.split_rotate_acc is None:
+            child.split_rotate_acc = sheet.split_rotate_acc        
+
+    return child_sheets
 
 
-def treeify(root, sd, rng):
+def treeify(root, sd, rng, style=Skeleton):
     """
     Attach a (botanical) tree's geometry to a NodePath.
 
@@ -298,11 +384,15 @@ def treeify(root, sd, rng):
         Stem definition
     rng
         :class:`random.Random` seed
+
+    style
+        Style definition to use for geometry
     """
     stemlet_sheet = StemletSheet(
         tree_root_node=root,
         stem_definition=sd,
         rng=rng,
+        style=style,
     )
     sheets = [stemlet_sheet]
 
@@ -320,9 +410,16 @@ def replace_tree(tree_def=BoringTree, seed=None):
     tree_root.remove_node()
     tree_root = NodePath('autotree')
     tree_root.reparent_to(base.render)
+    tree_root.set_h(-90)
 
     rng = random.Random(seed)
-    treeify(tree_root, tree_def, rng)
+
+    style = Skeleton
+
+    treeify(tree_root, tree_def, rng, style)
+    # tree_root.flatten_strong()
+    print("--------------------------")
+    tree_root.ls()
 
 
 base.accept('1', replace_tree, extraArgs=[QuakingAspen])
