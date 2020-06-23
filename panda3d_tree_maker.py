@@ -10,7 +10,7 @@ from direct.showbase.ShowBase import ShowBase
 
 from tree_specs import QuakingAspen, BlackTupelo, WeepingWillow, CaliforniaBlackOak, BoringTree
 from tree_specs import SplitRotation, SegmentType
-from style_def import Skeleton
+from style_def import Skeleton, Bark
 
 import geometry
 
@@ -24,69 +24,6 @@ base.camera.look_at(0, 0, 10)
 
 global tree_root
 tree_root = NodePath('autotree')
-
-# 4.1 The curved stem
-# nCurveRes -> segments
-# nCurve -> bend
-# nCurveBack -> bend_back
-# Instead of using a variance of 0 to max, we use -max to max:
-#   bend = nCurve + nCurveV
-#   bend_var = nCurveV / 2
-# missing: helical stem
-#
-# The stem is divided into nCurveRes segments.
-# if nCurveV < 0.0:
-#     stem is formed as a helix. The declination angle is specified by magnitude(nCurveVary)
-#     FIXME: That bit is unclear; Are we talking about the twist value?
-# elif not nCurveBack:
-#     the z-axis of each segment on the stem is rotated away from z-axis of the previous segment by (nCurve/nCurveRes) degrees
-# else:
-#     in the first half of the stemis rotated (nCurve/(nCurveRes/2)) degrees and
-#     each in the second half is rotated (nCurveBack/(nCurveRes/2)) degrees.
-# In either case, a random rotation of magnitude (nCurveV/nCurveRes) is also added for each segment.
-
-
-# 4.2 Stem Splits
-# nSegSplits -> splits
-# nBaseSplits -> trunk_splits
-# nSplitAngle -> split_angle
-# nSplitAngleV -> split_angle_var
-#
-# * Fractional branching: DONE
-#   At each segment, a stems can split into multiple clones. The frequency of splitting is defined by nSegSplits.
-#   This is the number of new clones added for each segment along the stem and is usually between 0 and 1, with 1 referring to a dichotomous split
-#   on every  segment. A value of 2 would indicate a ternary split.
-#   There is an additional parameter nBaseSplits that specifies the equivalent of nSegSplits at the end of the first segment of the trunk.
-#   This allows for an independent number of splits at the base of the tree, thus permitting trees that seem to have multiple trunks with few
-#   further splitting tendencies.
-#   Fractional values of nSegSplits will cause additional splits to be evenly distributed throughout all segments of all stems in that particular
-#   level of recursion. For example, an nSegSplits of 1.2 will form one clone on 80% of the level n segments and two clones on 20% of the segments.
-#   Note that this yields an average number of 1.2 splits per segment.  Using random numbers simplistically to distribute the fractional part of
-#   nSegSplits is unacceptable because when, by chance, several consecutive segments all get the extra split, they can forman unnaturally large
-#   number of stems in close proximity on part of the tree.
-# * Error diffusion: DONE
-#   To evenly distribute the splits, we use a technique similar to Floyd-Steinburg Error Diffusion.
-#   For each recursive level, a global value holds an "error value" initialized to 0.0.
-#   Each time nSegSplits is used, this error is added to create a SegSplits_effective which is rounded to the nearest integer.
-#   The difference (SegSplits_effective - nSegSplits) is subtracted from the error.
-#   So, if a value is rounded up, it is more likely that the next value will be rounded down (and vice versa).
-# * Angle split? DONE
-#   If there are any clones, then the z-axes of the stem and its clones each rotate away from the z-axis of the previous segment by
-#       anglesplit = (nSplitAngle ± nSplitAngleV) - declination, limited to a minimum of 0
-#     where the "declination" angle (defined here as the angle of a stem from the tree's positive z-axis) can be found by taking the inverse cosine
-#     of the z component of a unit z vector passed through the current matrix transformation of the relative coordinate system.
-#   The first clone continues the original mesh and cannot rotate around the z-axis or it would twist the mesh (i.e., if one rotated one of the
-#     circular faces on a cylinder about the longitudinal axis, the resulting section of geometry would render as a hourglass shape).
-#   This anglesplit is later distributed over the remaining segments in the reverse direction so that the stem will tend to return to its originally
-#     intended direction. This compensation prevents overspreading due to large numbers of stem splits. The extent that any level of stems spreads
-#     out can be easily controlled using the curve parameters.
-# * Stem split rotation around tree's z: DONE, kinda. No information about rotation of any segments except the first of two are given.
-#   A stem and its clones are also spread apart by rotating them about an axis that is parallel to the z-axis of the tree.
-#   In the normal case of a single clone, the original stem (which is continued after its clone is created) is rotated about the parallel axis by
-#   an angle of magnitude:
-#   [ 20 + 0.75 * (30 + | declination-90 |  )  *  RANDOM(0  to  1) ^ 2]
-#   The sign of this angle is random as well.
-
 
 # 4.3 Stem children
 #
@@ -131,6 +68,13 @@ tree_root = NodePath('autotree')
 #
 # This can be used to linearly change the down angle based on the position of the child along its parent, as with the Black Tupelo's main branches
 # seen in Plate 2b. Note how they are angled upward near the crown of the tree and angled downward near the bottom.
+
+# To generate animation:
+# * build a Character with the entire joint hierarchy
+# * put a TransformBlendTable on your geometry to map vertices to joints
+# * each animation would require an AnimBundle that replicates the
+#   Character's joint hierarchy and specifies a transform for each joint
+#   each frame of the animation
 
 
 class StemletSheet:
@@ -228,56 +172,78 @@ def stemify(sheet):
     for split_idx in range(splits + 1):
         # rngs
         gdrng_seed = slrng.random()
-        gdrgn = random.Random(gdrng_seed)  # geometry data rng
+        gdrng = random.Random(gdrng_seed)  # geometry data rng
         
+        # Create stemlet node,and position at the end of the parent
+        node = sheet.root_node.attach_new_node('stemlet')
+        node.set_z(sheet.root_length)
+
         # Segment length: segment_length
-        stemlet_length = sd.length / sd.segments + gdrgn.uniform(-1, 1) * sd.length_var / sd.segments
+        stemlet_length = sd.length / sd.segments + gdrng.uniform(-1, 1) * sd.length_var / sd.segments
 
         # Basic bend and split angle back bend: stemlet_bend, stemlet_debt_repayed
         if not sd.bend_back:
-            stemlet_bend = sd.bend / sd.segments + gdrgn.uniform(-1, 1) * sd.bend_var / sd.segments
+            stemlet_bend = sd.bend / sd.segments + gdrng.uniform(-1, 1) * sd.bend_var / sd.segments
         else:
             is_lower_half = sheet.rest_segments <= sd.segments / 2
             if is_lower_half:
-                stemlet_bend = sd.bend / (sd.segments / 2) + gdrgn.uniform(-1, 1) * sd.bend_var / sd.segments
+                stemlet_bend = sd.bend / (sd.segments / 2) + gdrng.uniform(-1, 1) * sd.bend_var / sd.segments
             else:
-                stemlet_bend = -sd.bend_back / (sd.segments / 2) + gdrgn.uniform(-1, 1) * sd.bend_var / sd.segments
+                stemlet_bend = -sd.bend_back / (sd.segments / 2) + gdrng.uniform(-1, 1) * sd.bend_var / sd.segments
         stemlet_debt_repayed = sheet.bend_debt / sheet.rest_segments
         stemlet_bend -= stemlet_debt_repayed
+
         # Split angle: stemlet_bend
         if split_idx > 0:
             up = Vec3(0, 0, 1)
             local_tree_up = sheet.root_node.get_relative_vector(sheet.tree_root_node, up)
             declination = local_tree_up.angle_deg(up)
-            split_angle = max(sd.split_angle + gdrgn.uniform(-1, 1) * sd.split_angle_var - declination, 0)
+            split_angle = max(sd.split_angle + gdrng.uniform(-1, 1) * sd.split_angle_var - declination, 0)
             stemlet_bend += split_angle
         else:
             split_angle = 0.0
+
+        # Bend: basic bend + split_angle
+        node.set_p(node, stemlet_bend)
+
         # Split children's rotation around the parent's Z: stemlet_split_rotation
         if split_idx == 0:
             stemlet_split_rotation = 0.0
         else:
             if sd.split_rotate_mode == SplitRotation.HELICAL:
-                sheet.split_rotate_acc += sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var
+                sheet.split_rotate_acc += sd.split_rotate + gdrng.uniform(-1, 1) * sd.split_rotate_var
             elif sd.split_rotate_mode == SplitRotation.COPLANAR:
-                sheet.split_rotate_acc += -sd.split_rotate + gdrgn.uniform(-1, 1) * sd.split_rotate_var + 180
+                sheet.split_rotate_acc += -sd.split_rotate + gdrng.uniform(-1, 1) * sd.split_rotate_var + 180
             else:
                 raise ValueError("Unknown split_rotate_mode {}".format(sd.split_rotate_mode))
             sheet.split_rotate_acc = sheet.split_rotate_acc % 360
             stemlet_split_rotation = sheet.split_rotate_acc
+
+        # Apply node to split rotation
+        node.set_h(stemlet_split_rotation)
+
         # Split rotation around tree's z: stemlet_z_rotation
         if split_idx > 0: # FIXME: ...in contradiction to the paper
             local_tree_up = sheet.root_node.get_relative_vector(sheet.tree_root_node, Vec3(0, 0, 1))
             declination = math.acos(local_tree_up.z) / math.pi * 360.0
-            angle_magnitude = 20 + 0.75 * (30 + abs(declination - 90)) * gdrgn.random() ** 2
-            stemlet_z_rotation = angle_magnitude * random.choice([-1, 1]) * sd.split_tree_z
+            angle_magnitude = 20 + 0.75 * (30 + abs(declination - 90)) * gdrng.random() ** 2
+            stemlet_z_rotation = angle_magnitude * gdrng.choice([-1, 1]) * sd.split_tree_z
         else:
             stemlet_z_rotation = 0.0
                 
+        # Apply split rotation around the tree's z
+        node.set_hpr(
+            node,
+            node.get_relative_vector(
+                sheet.tree_root_node,
+                Vec3(stemlet_z_rotation, 0, 0),
+            ),
+        )
+
         # Stem diameter
         if sd.segment_type == SegmentType.STEM:
             # Basic taper
-            base_diameter = sd.diameter + gdrgn.uniform(-1, 1) * sd.diameter_var
+            base_diameter = sd.diameter + gdrng.uniform(-1, 1) * sd.diameter_var
             runlength = 1 - (sheet.rest_segments + 1) / (sd.segments + 1)  # Z
             if sd.taper <= 1:
                 unit_taper = sd.taper
@@ -304,23 +270,6 @@ def stemify(sheet):
                     stemlet_diameter = (1 - depth) * taper_z + depth * math.sqrt(taper_z ** 2 - (Z_3 - taper_z) ** 2)
             # Flare
             stemlet_diameter *= sd.flare * (100 ** (1 - 8 * runlength) - 1) / 100 + 1
-
-        # stemlet node
-        node = sheet.root_node.attach_new_node('stemlet')
-        # Position at the end of parent
-        node.set_z(sheet.root_length)
-        # Rotate splits around their parent
-        node.set_h(stemlet_split_rotation)
-        # Bend: basic bend + split_angle
-        node.set_p(node, stemlet_bend)
-        # Rotate splits around the tree's z
-        node.set_hpr(
-            node,
-            node.get_relative_vector(
-                sheet.tree_root_node,
-                Vec3(stemlet_z_rotation, 0, 0),
-            ),
-        )
         
         # stemlet model
         node.attach_new_node(
@@ -414,7 +363,7 @@ def replace_tree(tree_def=BoringTree, seed=None):
 
     rng = random.Random(seed)
 
-    style = Skeleton
+    style = Bark  # Skeleton
 
     treeify(tree_root, tree_def, rng, style)
     # tree_root.flatten_strong()

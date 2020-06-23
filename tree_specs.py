@@ -48,22 +48,23 @@ class BoringTree:
     shape             = cylindrical             # See table
     taper             = 1.0                     # nTaper
     flare             = 0.0                     # Flare
-    lobes             = 3                       # Lobes
-    lobe_depth        = 0.5                     # LobeDepth
+    lobes             = 0                       # Lobes
+    lobe_depth        = 0.0                     # LobeDepth
     segments          = 10                      # nCurveRes
     length            = 20.0                    # Scale
-    length_var        =  2.0                    # ScaleV
+    length_var        =  0.0                    # ScaleV
     trunk_splits      = False                   # 0BaseSplits
-    splits            =  0.5                    # nSegSplits
-    split_angle       = 30.0                    # nSplitAngle
+    splits            =  0.0                    # nSegSplits
+    split_angle       =  0.0                    # nSplitAngle
     split_angle_var   =  0.0                    # nSplitAngleV
     split_tree_z      =  1.0                    # Ratio of "splits rotate around tree's z"; 0 for debugging, 1 for live
     split_rotate_mode = SplitRotation.HELICAL   # nRotate>=0: helical, else coplanar
-    split_rotate      = 60.0                    # abs((n+1)Rotate)
+    split_rotate      =  0.0                    # abs((n+1)Rotate)
     split_rotate_var  =  0.0                    #(n+1)RotateV
-    bend              =  0.0                    # nCurve
+    bend              = 90.0                    # nCurve
     bend_back         = False                   # nCurveBack
     bend_var          =  0.0                    # nCurveV
+    upward_attraction =  1.0                    # AttractionUp; should be 0 on trunks, value from paper on stems
     diameter          =  1.0
     diameter_var      =  0.0
     child_definition  = None
@@ -93,6 +94,7 @@ class QuakingAspen:
     bend              =   0.0
     bend_back         = False
     bend_var          =  20.0
+    upward_attraction =   0.0  # 0.5 on branches
     diameter          =   1.0
     diameter_var      =   0.0
     child_definition  = None
@@ -119,6 +121,7 @@ class BlackTupelo:
     bend              =   0.0
     bend_back         = False
     bend_var          =  40.0
+    upward_attraction =   0.0  # 0.5 on branches
     diameter          =   1.0
     diameter_var      =   0.0
     child_definition  = None
@@ -145,6 +148,7 @@ class WeepingWillow:
     bend              =    0.0
     bend_back         =   20.0
     bend_var          =  120.0
+    upward_attraction =    0.0  # -3.0 on branches
     diameter          =    1.0
     diameter_var      =    0.0
     child_definition  = None
@@ -171,6 +175,7 @@ class CaliforniaBlackOak:
     bend              =   0.0
     bend_back         = False
     bend_var          =  90.0
+    upward_attraction =   0.0  # 0.8 on branches
     diameter          =   1.0
     diameter_var      =   0.0
     child_definition  = None
