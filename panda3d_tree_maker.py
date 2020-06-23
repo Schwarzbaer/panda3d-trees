@@ -193,18 +193,34 @@ def stemify(sheet):
         stemlet_debt_repayed = sheet.bend_debt / sheet.rest_segments
         stemlet_bend -= stemlet_debt_repayed
 
+        # Apply basic bend
+        node.set_p(node, stemlet_bend)
+
+        # Upward / Light attraction
+        up = Vec3(0, 0, 1)
+        local_tree_up = sheet.root_node.get_relative_vector(sheet.tree_root_node, up)
+        upward_angle = 0.0 - math.asin(local_tree_up.y) / (2.0 * math.pi) * 360.0 
+
+        # forward = Vec3(0, 1, 0)
+        # local_tree_forward = sheet.root_node.get_relative_vector(sheet.tree_root_node, forward)
+        # orientation = math.acos(local_tree_forward.z)
+        attraction_up = upward_angle / sheet.rest_segments
+        print(attraction_up)
+        
+        # Apply upwards attraction
+        node.set_p(node.get_p() + attraction_up)
+        
         # Split angle: stemlet_bend
         if split_idx > 0:
             up = Vec3(0, 0, 1)
             local_tree_up = sheet.root_node.get_relative_vector(sheet.tree_root_node, up)
             declination = local_tree_up.angle_deg(up)
             split_angle = max(sd.split_angle + gdrng.uniform(-1, 1) * sd.split_angle_var - declination, 0)
-            stemlet_bend += split_angle
         else:
             split_angle = 0.0
 
         # Bend: basic bend + split_angle
-        node.set_p(node, stemlet_bend)
+        node.set_p(node, split_angle)
 
         # Split children's rotation around the parent's Z: stemlet_split_rotation
         if split_idx == 0:
@@ -363,7 +379,7 @@ def replace_tree(tree_def=BoringTree, seed=None):
 
     rng = random.Random(seed)
 
-    style = Bark  # Skeleton
+    style = Skeleton  # Bark
 
     treeify(tree_root, tree_def, rng, style)
     # tree_root.flatten_strong()
