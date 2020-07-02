@@ -43,32 +43,125 @@ class BoringLeaves:
     segments          = 0
 
 
-class BoringTree:
-    segment_type      = SegmentType.STEM        # Is this a stem, or a leaf? (We coud also add blossoms / fruits here.
-    shape             = cylindrical             # See table
-    taper             = 1.0                     # nTaper
-    flare             = 0.0                     # Flare
-    lobes             = 0                       # Lobes
-    lobe_depth        = 0.0                     # LobeDepth
-    segments          = 10                      # nCurveRes
-    length            = 20.0                    # Scale
-    length_var        =  0.0                    # ScaleV
-    trunk_splits      = False                   # 0BaseSplits
-    splits            =  0.0                    # nSegSplits
-    split_angle       =  0.0                    # nSplitAngle
-    split_angle_var   =  0.0                    # nSplitAngleV
-    split_tree_z      =  1.0                    # Ratio of "splits rotate around tree's z"; 0 for debugging, 1 for live
-    split_rotate_mode = SplitRotation.HELICAL   # nRotate>=0: helical, else coplanar
-    split_rotate      =  0.0                    # abs((n+1)Rotate)
-    split_rotate_var  =  0.0                    #(n+1)RotateV
-    bend              = 90.0                    # nCurve
-    bend_back         = False                   # nCurveBack
-    bend_var          =  0.0                    # nCurveV
-    upward_attraction =  1.0                    # AttractionUp; should be 0 on trunks, value from paper on stems
+class BoringBranch:
+    segment_type      = SegmentType.STEM
+    shape             = None
+    taper             = 1.0
+    flare             = 0.0
+    lobes             = 0
+    lobe_depth        = 0.0
+    segments          = 10
+    #length            = 20.0
+    #length_var        =  0.0
+    length_base       =  0.0
+    trunk_splits      = False
+    splits            =  0.0
+    split_angle       =  0.0
+    split_angle_var   =  0.0
+    split_tree_z      =  1.0
+    child_rotate_mode = SplitRotation.HELICAL
+    child_rotate      =  0.0
+    child_rotate_var  =  0.0
+    bend              =  0.0
+    bend_back         = False
+    bend_var          =  0.0
+    upward_attraction =  0.0
     diameter          =  1.0
     diameter_var      =  0.0
     child_definition  = None
-    # child_definition  = BoringLeaves
+    child_scale       =  0.5
+
+
+class BoringTwig:
+    segment_type      = SegmentType.STEM
+    shape             = None
+    taper             = 1.0
+    flare             = 0.0
+    lobes             = 0
+    lobe_depth        = 0.0
+    segments          = 10
+    #length            = 20.0
+    #length_var        =  0.0
+    length_base       =  0.0
+    trunk_splits      = False
+    splits            =  0.0
+    split_angle       =  0.0
+    split_angle_var   =  0.0
+    split_tree_z      =  1.0
+    child_rotate_mode = SplitRotation.HELICAL
+    child_rotate      =  0.0
+    child_rotate_var  =  0.0
+    bend              =  0.0
+    bend_back         = False
+    bend_var          =  0.0
+    upward_attraction =  0.0
+    diameter          =  1.0
+    diameter_var      =  0.0
+    child_definition  = None
+    child_scale       =  0.5
+
+
+class BoringBranch:
+    segment_type         = SegmentType.STEM
+    shape                = None
+    taper                = 1.0
+    flare                = 0.0
+    lobes                = 0
+    lobe_depth           = 0.0
+    segments             = 10
+    #length               = 20.0
+    #length_var           =  0.0
+    length_base          =  0.0
+    trunk_splits         = False
+    splits               =  0.0
+    split_angle          =  0.0
+    split_angle_var      =  0.0
+    split_tree_z         =  1.0
+    child_rotate_mode    = SplitRotation.HELICAL
+    child_rotate         =  0.0
+    child_rotate_var     =  0.0
+    bend                 =  0.0
+    bend_back            = False
+    bend_var             =  0.0
+    upward_attraction    =  0.0
+    diameter             =  1.0
+    diameter_var         =  0.0
+    child_definition     = None  # BoringTwig
+    child_scale          =  0.5
+    child_diameter_power =  2.0
+
+
+class BoringTree:
+    segment_type         = SegmentType.STEM        # Is this a stem, or a leaf? (We coud also add blossoms / fruits here.
+    shape                = spherical               # Shape; None for branches
+    taper                =  1.0                    # nTaper
+    flare                =  0.0                    # Flare
+    lobes                =  0                      # Lobes
+    lobe_depth           =  0.0                    # LobeDepth
+    segments             =  3                      # nCurveRes
+    length               = 20.0                    # Scale
+    length_var           =  0.0                    # ScaleV
+    length_base          =  0.33                   # BaseSize; 0.0 for branches
+    trunk_splits         =  1                      # 0BaseSplits
+    splits               =  0.0                    # nSegSplits
+    split_angle          = 20.0                    # nSplitAngle
+    split_angle_var      =  0.0                    # nSplitAngleV
+    split_tree_z         =  1.0                    # Ratio of "splits rotate around tree's z"; 0 for debugging, 1 for live
+    bend                 =  0.0                    # nCurve
+    bend_back            =  0.0                    # nCurveBack; False to deactivate
+    bend_var             =  0.0                    # nCurveV
+    upward_attraction    =  0.0                    # AttractionUp; should be 0 on trunks, value from paper on stems
+    diameter             =  1.0
+    diameter_var         =  0.0
+    child_branches       = 10                      # nBranches
+    child_definition     = BoringBranch            # Stem definition class of the next level
+    child_scale          =  0.5                    # nLength
+    child_diameter_power =  2.0                    # RatioPower
+    child_down           = 60.0                    # (n+1)DownAngle
+    child_down_var       =  0.0                    # (n+1)DownAngleV
+    child_rotate_mode    = SplitRotation.HELICAL   # (n+1)Rotate>=0: helical, else coplanar
+    child_rotate         = 10.0                    # abs((n+1)Rotate)
+    child_rotate_var     =  0.0                    # (n+1)RotateV
 
 
 # Actual botanical trees
@@ -88,9 +181,9 @@ class QuakingAspen:
     split_angle       =   0.0
     split_angle_var   =   0.0
     split_tree_z      =   1.0
-    split_rotate_mode = SplitRotation.HELICAL
-    split_rotate      = 140.0
-    split_rotate_var  =   0.0
+    child_rotate_mode = SplitRotation.HELICAL
+    child_rotate      = 140.0
+    child_rotate_var  =   0.0
     bend              =   0.0
     bend_back         = False
     bend_var          =  20.0
@@ -115,9 +208,9 @@ class BlackTupelo:
     split_angle       =   0.0
     split_angle_var   =   0.0
     split_tree_z      =   1.0
-    split_rotate_mode = SplitRotation.HELICAL
-    split_rotate      = 140.0
-    split_rotate_var  =   0.0
+    child_rotate_mode = SplitRotation.HELICAL
+    child_rotate      = 140.0
+    child_rotate_var  =   0.0
     bend              =   0.0
     bend_back         = False
     bend_var          =  40.0
@@ -127,32 +220,71 @@ class BlackTupelo:
     child_definition  = None
 
 
-class WeepingWillow:
-    segment_type      = SegmentType.STEM
-    shape             =  cylindrical
-    taper             =    1
-    flare             =    0.75
-    lobes             =    9
-    lobe_depth        =    0.03
-    segments          =    8
-    length            =   15.0
-    length_var        =    5.0
-    trunk_splits      =    2
-    splits            =    0.1
-    split_angle       =    3.0
-    split_angle_var   =    0.0
-    split_tree_z      =    1.0
-    split_rotate_mode = SplitRotation.COPLANAR
-    split_rotate      =  120.0
-    split_rotate_var  =   30.0
-    bend              =    0.0
-    bend_back         =   20.0
-    bend_var          =  120.0
-    upward_attraction =    0.0  # -3.0 on branches
-    diameter          =    1.0
-    diameter_var      =    0.0
-    child_definition  = None
+### Weeping Willow
 
+class WeepingWillowBranch:
+    segment_type      = SegmentType.STEM
+    shape             = None
+    taper             = 1.0
+    flare             = 0.0
+    lobes             = 0
+    lobe_depth        = 0.0
+    segments          = 16
+    length            = False
+    length_var        = False
+    trunk_splits      = False
+    splits            =  0.2
+    split_angle       = 45.0
+    split_angle_var   = 20.0
+    split_tree_z      =  1.0
+    child_rotate_mode = SplitRotation.COPLANAR
+    child_rotate      = -120.0
+    child_rotate_var  =   30.0
+    bend              =   40
+    bend_back         =   80
+    bend_var          =   90
+    upward_attraction =   -3.0
+    diameter          = False
+    diameter_var      = False
+    child_definition  = None
+    child_scale       = 0.5
+    child_scale_var   = 0.1
+
+
+class WeepingWillow:
+    segment_type         = SegmentType.STEM
+    shape                =  cylindrical
+    taper                =    1
+    flare                =    0.75
+    lobes                =    9
+    lobe_depth           =    0.03
+    segments             =    8
+    length               =   15.0
+    length_var           =    5.0
+    length_base          =    0.05
+    trunk_splits         =    2
+    splits               =    0.1
+    split_angle          =    3.0
+    split_angle_var      =    0.0
+    split_tree_z         =    1.0
+    bend                 =    0.0
+    bend_back            =   20.0
+    bend_var             =  120.0
+    upward_attraction    =    0.0
+    diameter             =    1.0
+    diameter_var         =    0.0
+    child_definition     = WeepingWillowBranch
+    child_branches       =   25
+    child_scale          =    0.8
+    child_diameter_power =    2.0
+    child_down           =   20.0
+    child_down_var       =   10.0
+    child_rotate_mode    = SplitRotation.COPLANAR
+    child_rotate         =  120.0
+    child_rotate_var     =   30.0
+
+
+### California Black Oak
 
 class CaliforniaBlackOak:
     segment_type      = SegmentType.STEM
@@ -169,9 +301,9 @@ class CaliforniaBlackOak:
     split_angle       =  10.0
     split_angle_var   =   0.0
     split_tree_z      =   1.0
-    split_rotate_mode = SplitRotation.HELICAL
-    split_rotate      =  80.0
-    split_rotate_var  =   0.0
+    child_rotate_mode = SplitRotation.HELICAL
+    child_rotate      =  80.0
+    child_rotate_var  =   0.0
     bend              =   0.0
     bend_back         = False
     bend_var          =  90.0
