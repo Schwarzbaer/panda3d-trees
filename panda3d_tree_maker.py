@@ -23,7 +23,7 @@ import geometry
 ShowBase()
 base.disable_mouse()
 base.accept('escape', sys.exit)
-base.camera.set_pos(0, -50, 1.6)
+base.camera.set_pos(0, -150, 1.6)
 base.camera.look_at(0, 0, 10)
 
 
@@ -292,7 +292,7 @@ def stemify(sheet):
                 stems = bd.child_branches / bd.segments * (0.2 + 0.8 * offset) * fecundity
             else:  # Branches on branches
                 stems = bd.child_branches / bd.segments * (1.0 - 0.5 * offset) * fecundity
-            print(fecundity, offset, stems)
+            # print(fecundity, offset, stems)
             children = math.floor(stems)            
             if random.random() <= stems % 1:
                 children += 1
@@ -331,6 +331,13 @@ def stemify(sheet):
                     raise Exception
                     # down_angle = bd.child_down +- abs(bd.child_down_var * (1 - 2 * conical(lengthparent - offsetchild) / (lengthparent - lengthbase)))
                 child_node.set_p(down_angle)
+
+                # Upward attraction (copypasted from above)
+                up = Vec3(0, 0, 1)
+                local_tree_up = node.get_relative_vector(sheet.tree_root_node, up)
+                upward_angle = 0.0 - math.asin(local_tree_up.y) / (2.0 * math.pi) * 360.0 
+                attraction_up = upward_angle / bd.child_definition.segments * bd.upward_attraction
+                child_node.set_p(child_node, attraction_up)
 
                 # ...and create the child's sheet.
                 child_sheet = StemletSheet(
