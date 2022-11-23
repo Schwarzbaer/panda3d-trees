@@ -25,6 +25,18 @@ class Skeleton:
     bark       = False                     # Line art to mock up bark.
 
 
+class SkeletonAndRing:
+    # XY indicator on stem
+    x          = False
+    y          = False
+    xyz_at_top = True
+    # skeleton geometry
+    stem       = VBase4(1, 1, 1, 1)        # Central axis of the segment
+    ring_segs  = 10
+    ring       = VBase4(0.7, 0.7, 0.7, 1)
+    bark       = False                     # Line art to mock up bark.
+
+
 class Bark:
     x          = False
     y          = False

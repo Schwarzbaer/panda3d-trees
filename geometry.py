@@ -13,7 +13,20 @@ from panda3d.core import LineSegs
 
 # stemlet lineseg model
 
-def line_art(sd, stemlet_length, stemlet_diameter, rest_segments, style):
+
+def skin(sheet, style):
+    line_art(sheet, style)
+    for child in sheet.continuations:
+        skin(child, style)
+    for child in sheet.children:
+        skin(child, style)
+
+def line_art(sheet, style):
+    node = sheet.node
+    stemlet_length = sheet.segment_length
+    stemlet_diameter = sheet.segment_diameter
+    rest_segments = sheet.rest_segments
+    
     segs = LineSegs()
     segs.set_thickness(2.0)
     if style.stem:
@@ -59,7 +72,7 @@ def line_art(sd, stemlet_length, stemlet_diameter, rest_segments, style):
     if style.bark:
         segs.set_color(style.bark)
         for r in range(style.ring_segs):
-            lobing = 1 + math.sin(2 * math.pi * sd.lobes * r / style.ring_segs)
+            lobing = 1 + math.sin(2 * math.pi * sheet.stem_definition.lobes * r / style.ring_segs)
             v = r / style.ring_segs * 2 * math.pi
             segs.move_to(
                 math.sin(v) * stemlet_diameter * lobing,
@@ -86,4 +99,72 @@ def line_art(sd, stemlet_length, stemlet_diameter, rest_segments, style):
         segs.move_to(0, 0, indicator_z)
         segs.draw_to(0, stemlet_diameter, indicator_z)
         
-    return segs.create()
+    node.attach_new_node(segs.create())
+
+    for child in sheet.stem_continuations:
+        line_art(child, style)
+    for child in sheet.branch_children:
+        line_art(child, style)
+
+
+def trimesh(tree):
+    current_vertex_index = 0
+    tree.first_vertex_index
+    # Set up the vertex arrays
+    vformat = GeomVertexFormat.getV3c4()
+    vdata = GeomVertexData("Data", vformat, Geom.UHDynamic)
+    vertex = GeomVertexWriter(vdata, 'vertex')
+    normal = GeomVertexWriter(vdata, 'normal')
+    color = GeomVertexWriter(vdata, 'color')
+    geom = Geom(vdata)
+
+    # Write vertex data
+    for x in range(0, sidelength):
+        for y in range(0, sidelength):
+            # vertex_number = x * sidelength + y
+            v_x, v_y, v_z = self.map_b[(x, y)]
+            n_x, n_y, n_z = 0.0, 0.0, 1.0
+            c_r, c_g, c_b, c_a = 0.5, 0.5, 0.5, 0.5
+            vertex.addData3f(v_x, v_y, v_z)
+            normal.addData3f(n_x, n_y, n_z)
+            color.addData4f(c_r, c_g, c_b, c_a)
+
+    # Add triangles
+    for x in range(0, sidelength - 1):
+        for y in range(0, sidelength - 1):
+            # The vertex arrangement (y up, x right)
+            # 2 3
+            # 0 1
+            v_0 = x * sidelength + y
+            v_1 = x * sidelength + (y + 1)
+            v_2 = (x + 1) * sidelength + y
+            v_3 = (x + 1) * sidelength + (y + 1)
+            if (x+y)%1 == 0: # An even square
+                tris = GeomTriangles(Geom.UHStatic)
+                tris.addVertices(v_0, v_2, v_3)
+                tris.closePrimitive()
+                geom.addPrimitive(tris)
+                tris = GeomTriangles(Geom.UHStatic)
+                tris.addVertices(v_3, v_1, v_0)
+                tris.closePrimitive()
+                geom.addPrimitive(tris)
+            else: # An odd square
+                tris = GeomTriangles(Geom.UHStatic)
+                tris.addVertices(v_1, v_0, v_2)
+                tris.closePrimitive()
+                geom.addPrimitive(tris)
+                tris = GeomTriangles(Geom.UHStatic)
+                tris.addVertices(v_2, v_3, v_1)
+                tris.closePrimitive()
+                geom.addPrimitive(tris)
+
+    # Create the actual node
+    node = GeomNode('geom_node')
+    node.addGeom(geom)
+    
+    # Remember GeomVertexWriters to adjust vertex data later
+    #self.vertex_writer = vertex
+    #self.color_writer = color
+    self.vdata = vdata
+    
+    return node
