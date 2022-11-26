@@ -30,6 +30,7 @@ def replace_tree(tree_def=BoringTree, seed=None):
     tree = StemSegment(tree_def, tree_root, rng_seed=rng)
     tree.expand()
     geometry.line_art(tree, style)
+    geometry.trimesh(tree).reparent_to(tree_root)
 
 
 def move_camera(task):
@@ -58,7 +59,7 @@ ShowBase()
 base.disable_mouse()
 base.accept('escape', sys.exit)
 base.camera.set_pos(0, 0, 1.6)
-base.cam.set_y(-50)
+base.cam.set_y(-10)
 base.add_task(move_camera)
 
 

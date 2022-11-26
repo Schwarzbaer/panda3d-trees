@@ -1,7 +1,17 @@
 import math
+import random
 
+from panda3d.core import Vec3
+from panda3d.core import Vec4
 from panda3d.core import VBase4
 from panda3d.core import LineSegs
+from panda3d.core import GeomVertexFormat
+from panda3d.core import GeomVertexData
+from panda3d.core import GeomVertexWriter
+from panda3d.core import GeomTriangles
+from panda3d.core import Geom
+from panda3d.core import GeomNode
+from panda3d.core import NodePath
 
 # stemlet_model = base.loader.load_model('models/smiley')
 # stemlet_model.reparent_to(node)
@@ -107,64 +117,93 @@ def line_art(sheet, style):
         line_art(child, style)
 
 
-def trimesh(tree):
+def trimesh(stem, circle_segments=10):
+    # What verte ID does each segment start at?
     current_vertex_index = 0
-    tree.first_vertex_index
-    # Set up the vertex arrays
-    vformat = GeomVertexFormat.getV3c4()
+    segments = [stem]
+    while segments:
+        segment = segments.pop()
+        current_vertex_index += circle_segments
+        segment.start_vertex_index = current_vertex_index
+        segments += segment.stem_continuations
+
+    # Set up the vertex arrays and associated stuff.
+    vformat = GeomVertexFormat.getV3n3c4()
     vdata = GeomVertexData("Data", vformat, Geom.UHDynamic)
     vertex = GeomVertexWriter(vdata, 'vertex')
     normal = GeomVertexWriter(vdata, 'normal')
     color = GeomVertexWriter(vdata, 'color')
     geom = Geom(vdata)
+    #geom.modify_vertex_data().set_num_rows(current_vertex_index + circle_segments)
+    turtle = stem.tree_root_node.attach_new_node('turtle')
 
-    # Write vertex data
-    for x in range(0, sidelength):
-        for y in range(0, sidelength):
-            # vertex_number = x * sidelength + y
-            v_x, v_y, v_z = self.map_b[(x, y)]
-            n_x, n_y, n_z = 0.0, 0.0, 1.0
-            c_r, c_g, c_b, c_a = 0.5, 0.5, 0.5, 0.5
-            vertex.addData3f(v_x, v_y, v_z)
-            normal.addData3f(n_x, n_y, n_z)
-            color.addData4f(c_r, c_g, c_b, c_a)
+    # Add the initial circle
+    for i in range(circle_segments):
+        turtle.set_h(360.0 / circle_segments * i)
+        v_pos = stem.tree_root_node.get_relative_point(
+            turtle,
+            Vec3(0, stem.segment_diameter, 0),
+        )
+        print(v_pos)
+        vertex.addData3f(v_pos)
+        normal.addData3f(
+            stem.tree_root_node.get_relative_vector(
+                turtle,
+                Vec3(0, 1, 0),
+            ),
+        )
+        color.addData4f(
+            Vec4(
+                random.random(),
+                random.random(),
+                random.random(),
+                1,
+            ),
+        )
 
-    # Add triangles
-    for x in range(0, sidelength - 1):
-        for y in range(0, sidelength - 1):
-            # The vertex arrangement (y up, x right)
-            # 2 3
-            # 0 1
-            v_0 = x * sidelength + y
-            v_1 = x * sidelength + (y + 1)
-            v_2 = (x + 1) * sidelength + y
-            v_3 = (x + 1) * sidelength + (y + 1)
-            if (x+y)%1 == 0: # An even square
-                tris = GeomTriangles(Geom.UHStatic)
-                tris.addVertices(v_0, v_2, v_3)
-                tris.closePrimitive()
-                geom.addPrimitive(tris)
-                tris = GeomTriangles(Geom.UHStatic)
-                tris.addVertices(v_3, v_1, v_0)
-                tris.closePrimitive()
-                geom.addPrimitive(tris)
-            else: # An odd square
-                tris = GeomTriangles(Geom.UHStatic)
-                tris.addVertices(v_1, v_0, v_2)
-                tris.closePrimitive()
-                geom.addPrimitive(tris)
-                tris = GeomTriangles(Geom.UHStatic)
-                tris.addVertices(v_2, v_3, v_1)
-                tris.closePrimitive()
-                geom.addPrimitive(tris)
+    segments = [(stem, 0)]
+    while segments:
+        segment, parent_start_index = segments.pop()
+        own_start_index = segment.start_vertex_index
+        # FIXME: Create vertices, draw triangles
+        turtle.reparent_to(segment.node)
+        for i in range(circle_segments):
+            turtle.set_h(360.0 / circle_segments * i)
+            vertex.addData3f(
+                stem.tree_root_node.get_relative_point(
+                    turtle,
+                    Vec3(0, stem.segment_diameter, stem.segment_length),
+                ),
+            )
+            normal.addData3f(
+                stem.tree_root_node.get_relative_vector(
+                    turtle,
+                    Vec3(0, 1, 0),
+                ),
+            )
+            color.addData4f(
+                Vec4(
+                    random.random(),
+                    random.random(),
+                    random.random(),
+                    1,
+                ),
+            )
+        for i in range(circle_segments):
+            v_tl = own_start_index + i
+            v_bl = parent_start_index + i
+            v_tr = own_start_index + (i + 1) % circle_segments
+            v_br = parent_start_index + (i + 1) % circle_segments
 
-    # Create the actual node
+            tris = GeomTriangles(Geom.UHStatic)
+            tris.addVertices(v_tl, v_bl, v_tr)
+            tris.addVertices(v_br, v_tr, v_bl)
+            tris.closePrimitive()
+            geom.addPrimitive(tris)
+
+        segments += [(s, own_start_index) for s in segment.stem_continuations]
+    
     node = GeomNode('geom_node')
-    node.addGeom(geom)
-    
-    # Remember GeomVertexWriters to adjust vertex data later
-    #self.vertex_writer = vertex
-    #self.color_writer = color
-    self.vdata = vdata
-    
-    return node
+    node.add_geom(geom)
+    print(NodePath(node).analyze())
+    return NodePath(node)
