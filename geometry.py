@@ -1,5 +1,6 @@
 import math
 import random
+import enum
 
 from panda3d.core import Vec3
 from panda3d.core import Vec4
@@ -13,6 +14,9 @@ from panda3d.core import Geom
 from panda3d.core import GeomNode
 from panda3d.core import NodePath
 
+from tree_generation import sd  # Stem definition enum
+from tree_generation import sg  # Segment enum
+
 # stemlet_model = base.loader.load_model('models/smiley')
 # stemlet_model.reparent_to(node)
 # 
@@ -24,108 +28,22 @@ from panda3d.core import NodePath
 # stemlet lineseg model
 
 
-def skin(sheet, style):
-    line_art(sheet, style)
-    for child in sheet.continuations:
-        skin(child, style)
-    for child in sheet.children:
-        skin(child, style)
+class GeometryData(enum.Enum):
+    START_VERTEX = 1  # The number of the first vertex in this segment's geometry.
 
-def line_art(sheet, style):
-    node = sheet.node
-    stemlet_length = sheet.segment_length
-    stemlet_diameter = sheet.segment_diameter
-    rest_segments = sheet.rest_segments
+
+gd = GeometryData
+
     
-    segs = LineSegs()
-    segs.set_thickness(2.0)
-    if style.stem:
-        segs.set_color(style.stem)
-        segs.move_to(0, 0, 0)
-        segs.draw_to(0, 0, stemlet_length)
-
-    # Ring around base
-    if style.ring:
-        # Segment base ring
-        segs.set_color(style.ring)
-        for r in range(style.ring_segs):
-            from_v = r / style.ring_segs * 2 * math.pi
-            to_v = (r + 1) / style.ring_segs * 2 * math.pi
-            segs.move_to(
-                math.sin(from_v) * stemlet_diameter,
-                math.cos(from_v) * stemlet_diameter,
-                0,
-            )
-            segs.draw_to(
-                math.sin(to_v) * stemlet_diameter,
-                math.cos(to_v) * stemlet_diameter,
-                0,
-            )
-
-        # Endcap ring
-        if rest_segments == 1:
-            for r in range(style.ring_segs):
-                from_v = r / style.ring_segs * 2 * math.pi
-                to_v = (r + 1) / style.ring_segs * 2 * math.pi
-                segs.move_to(
-                    math.sin(from_v) * stemlet_diameter,
-                    math.cos(from_v) * stemlet_diameter,
-                    stemlet_length,
-                )
-                segs.draw_to(
-                    math.sin(to_v) * stemlet_diameter,
-                    math.cos(to_v) * stemlet_diameter,
-                    stemlet_length,
-                )
-
-    # Bark
-    if style.bark:
-        segs.set_color(style.bark)
-        for r in range(style.ring_segs):
-            lobing = 1 + math.sin(2 * math.pi * sheet.stem_definition.lobes * r / style.ring_segs)
-            v = r / style.ring_segs * 2 * math.pi
-            segs.move_to(
-                math.sin(v) * stemlet_diameter * lobing,
-                math.cos(v) * stemlet_diameter * lobing,
-                0,
-            )
-            segs.draw_to(
-                math.sin(v) * stemlet_diameter * lobing,
-                math.cos(v) * stemlet_diameter * lobing,
-                stemlet_length,
-            )
-
-    # x/y indicators
-    if style.xyz_at_top:
-        indicator_z = stemlet_length
-    else:
-        indicator_z = 0.0
-    if style.x:
-        segs.set_color(style.x)
-        segs.move_to(0, 0, indicator_z)
-        segs.draw_to(stemlet_diameter, 0, indicator_z)
-    if style.y:
-        segs.set_color(style.y)
-        segs.move_to(0, 0, indicator_z)
-        segs.draw_to(0, stemlet_diameter, indicator_z)
-        
-    node.attach_new_node(segs.create())
-
-    for child in sheet.stem_continuations:
-        line_art(child, style)
-    for child in sheet.branch_children:
-        line_art(child, style)
-
-
 def trimesh(stem, circle_segments=10):
-    # What verte ID does each segment start at?
+    # What vertex ID does each segment start at?
     current_vertex_index = 0
     segments = [stem]
     while segments:
-        segment = segments.pop()
+        s = segments.pop()
         current_vertex_index += circle_segments
-        segment.start_vertex_index = current_vertex_index
-        segments += segment.stem_continuations
+        s[gd.START_VERTEX] = current_vertex_index
+        segments += s[sg.CONTINUATIONS]
 
     # Set up the vertex arrays and associated stuff.
     vformat = GeomVertexFormat.getV3n3c4()
@@ -135,19 +53,18 @@ def trimesh(stem, circle_segments=10):
     color = GeomVertexWriter(vdata, 'color')
     geom = Geom(vdata)
     #geom.modify_vertex_data().set_num_rows(current_vertex_index + circle_segments)
-    turtle = stem.tree_root_node.attach_new_node('turtle')
+    turtle = s[sg.TREE_ROOT_NODE].attach_new_node('turtle')
 
     # Add the initial circle
     for i in range(circle_segments):
         turtle.set_h(360.0 / circle_segments * i)
-        v_pos = stem.tree_root_node.get_relative_point(
+        v_pos = s[sg.TREE_ROOT_NODE].get_relative_point(
             turtle,
-            Vec3(0, stem.segment_diameter, 0),
+            Vec3(0, s[sg.DEFINITION][sd.RADIUS], 0),
         )
-        print(v_pos)
         vertex.addData3f(v_pos)
         normal.addData3f(
-            stem.tree_root_node.get_relative_vector(
+            s[sg.TREE_ROOT_NODE].get_relative_vector(
                 turtle,
                 Vec3(0, 1, 0),
             ),
@@ -163,20 +80,20 @@ def trimesh(stem, circle_segments=10):
 
     segments = [(stem, 0)]
     while segments:
-        segment, parent_start_index = segments.pop()
-        own_start_index = segment.start_vertex_index
+        s, parent_start_index = segments.pop()
+        own_start_index = s[gd.START_VERTEX]
         # FIXME: Create vertices, draw triangles
-        turtle.reparent_to(segment.node)
+        turtle.reparent_to(s[sg.NODE])
         for i in range(circle_segments):
             turtle.set_h(360.0 / circle_segments * i)
             vertex.addData3f(
-                stem.tree_root_node.get_relative_point(
+                s[sg.TREE_ROOT_NODE].get_relative_point(
                     turtle,
-                    Vec3(0, stem.segment_diameter, stem.segment_length),
+                    Vec3(0, s[sg.DEFINITION][sd.RADIUS], 0),
                 ),
             )
             normal.addData3f(
-                stem.tree_root_node.get_relative_vector(
+                s[sg.TREE_ROOT_NODE].get_relative_vector(
                     turtle,
                     Vec3(0, 1, 0),
                 ),
@@ -201,9 +118,8 @@ def trimesh(stem, circle_segments=10):
             tris.closePrimitive()
             geom.addPrimitive(tris)
 
-        segments += [(s, own_start_index) for s in segment.stem_continuations]
+        segments += [(sc, own_start_index) for sc in s[sg.CONTINUATIONS]]
     
     node = GeomNode('geom_node')
     node.add_geom(geom)
-    print(NodePath(node).analyze())
-    return NodePath(node)
+    return node

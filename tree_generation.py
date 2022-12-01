@@ -1,66 +1,178 @@
 import random
 import math
+import enum
 
 from panda3d.core import Vec3
+from panda3d.core import NodePath
 
 from tree_specs import BoringTree, SegmentType, SplitRotation
 
 
 # A tree's wooden parts are made of a hierarchy of stems.
-# Stems are sequences of segments.
-# Each segment may have one or more children, either continuing the current stem, or branching off a new one.
+# Stems are sequences of `sd.SEGMENT` segments.
+# Each segment may have one or more `sg.CONTINUATIONS`, continuing
+#   the current stem. A segment without continuations ends this run of
+#   the stem.
+# There are three basic modes of how a stem bends and twists:
+#   * Basic: Each segment pitches up relative to its parent. The total
+#     bent of the tree is `bend` degrees.
+#   * S-shaped: In the first half of the stem, segments pitch up a total
+#     of `bend` degrees, while in the second half they pitch down a
+#     total of `bend_back` degrees.
+#   * Helical: FIXME
+# After each segment (that is not the last in the stem), 
 
-class StemSegment:
-    def __init__(self, stem_definition, tree_root_node, segment_root=None,
-                 rest_segments=None,
-                 rng_seed=0):
-        """
-        """
-        if rest_segments is None:
-            rest_segments = stem_definition.segments
-        print(rest_segments)
 
-        self.stem_definition = stem_definition
-        self.tree_root_node = tree_root_node
-        self.segment_root = segment_root
-        self.rest_segments = rest_segments
-        self.rng_seed = rng_seed
+class StemType(enum.Enum):
+    STEM = 1
+    LEAF = 2
 
-        # DEBUG
-        self.segment_length = 1.0
-        self.segment_diameter = 1.0
 
-        # Children
-        self.stem_continuations = []
-        self.branch_children = []
+class StemDefinition(enum.Enum):
+    SEGMENTS = 1   # Number of segments in the stem
+    LENGTH = 2     # Length of the stem
+    RADIUS = 3     # Radius of the stem (FIXME: ...at the base?)
+    CURVE = 4      #
+    CuRVEBACK = 5  #
 
-    def expand(self):
-        self.figure_out_hierarchy_and_attach_node()
 
-        if self.rest_segments > 1:
-            continuation = StemSegment(
-                self.stem_definition,
-                self.tree_root_node,  # It's on the same tree
-                segment_root=self,  # This segment is the next one's root
-                rest_segments=self.rest_segments-1,
-                rng_seed=0, # FIXME
-            )
-            self.stem_continuations.append(continuation)
+class Segment(enum.Enum):
+    DEFINITION = 1      # The StemDefinition for this stem.
+    TREE_ROOT_NODE = 2  # The NodePath representing the tree's starting point.
+    STEM_ROOT = 3       # The first segment of the stem.
+    PARENT_SEGMENT = 4  # The segment from which this one sprouts.
+    NODE = 5            # The NodePath representing this segment.
+    REST_SEGMENTS =  6  # The number of segments left in the stem, inluding this one.
+    CONTINUATIONS = 7   # Segments that continue the stem.
+
+
+sd = StemDefinition
+BoringTree = {
+    sd.SEGMENTS: 10,
+    sd.LENGTH: 4.0,
+    sd.RADIUS: 0.5,
+}
+
+
+sg = Segment
+
+
+def expand(s):
+    if sg.TREE_ROOT_NODE not in s:
+        # This segment is the root of the tree
+        s[sg.TREE_ROOT_NODE] = NodePath('tree_root')
+
+    # Attach the segment's node and move it into place
+    if sg.PARENT_SEGMENT not in s:
+        # This segment is (still) the tree's root
+        s[sg.NODE] = s[sg.TREE_ROOT_NODE].attach_new_node('tree_segment')
+    else:
+        s[sg.NODE] = s[sg.PARENT_SEGMENT][sg.NODE].attach_new_node('tree_segment')
+    s[sg.NODE].set_z(s[sg.DEFINITION][sd.LENGTH] / s[sg.DEFINITION][sd.SEGMENTS])
         
-        for child in self.stem_continuations:
-            child.expand()
-        for child in self.branch_children:
-            child.expand()
+    # If this is a new stem, set the rest segment number.
+    if sg.STEM_ROOT not in s:
+        s[sg.STEM_ROOT] = self
+        s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS]
 
-    def figure_out_hierarchy_and_attach_node(self):
-        if self.segment_root is None:
-            node = self.tree_root_node.attach_new_node('stem_segment')
-        else:
-            node = self.segment_root.node.attach_new_node('stem_segment')
-            node.set_z(self.segment_root.segment_length)
-        self.node = node
-        node.set_python_tag('tree_generator_data', self)
+    # Create the next segment
+    s[sg.CONTINUATIONS] = []
+    if s[sg.REST_SEGMENTS] > 1:
+        s[sg.CONTINUATIONS].append(
+            {
+                sg.DEFINITION: s[sg.DEFINITION],
+                sg.TREE_ROOT_NODE: s[sg.TREE_ROOT_NODE],
+                sg.STEM_ROOT: s[sg.STEM_ROOT],
+                sg.PARENT_SEGMENT: s,
+                sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
+            },
+        )
 
+
+def expand_fully(s):
+    sheets = [s]
+    while sheets:
+        sheet = sheets.pop()
+        expand(sheet)
+        sheets += sheet[sg.CONTINUATIONS]
+
+
+
+
+
+
+#class StemSegment:
+#    def __init__(self, stem_definition, tree_root_node, segment_root=None,
+#                 rest_segments=None,
+#                 rng_seed=0):
+#        """
+#        """
+#        if rest_segments is None:
+#            rest_segments = stem_definition.segments
+#        print(rest_segments)
+#
+#        self.stem_definition = stem_definition
+#        self.tree_root_node = tree_root_node
+#        self.segment_root = segment_root
+#        self.rest_segments = rest_segments
+#        self.rng_seed = rng_seed
+#
+#        # DEBUG
+#        self.segment_length = 1.0
+#        self.segment_diameter = 1.0
+#
+#        # Children
+#        self.stem_continuations = []
+#        self.branch_children = []
+#
+#    def expand(self):
+#        self.figure_out_hierarchy_and_attach_node()
+#
+#        if self.rest_segments > 1:
+#            continuation = StemSegment(
+#                self.stem_definition,
+#                self.tree_root_node,  # It's on the same tree
+#                segment_root=self,  # This segment is the next one's root
+#                rest_segments=self.rest_segments-1,
+#                rng_seed=0, # FIXME
+#            )
+#            self.stem_continuations.append(continuation)
+#        
+#        for child in self.stem_continuations:
+#            child.expand()
+#        for child in self.branch_children:
+#            child.expand()
+#
+#    def figure_out_hierarchy_and_attach_node(self):
+#        if self.segment_root is None:
+#            node = self.tree_root_node.attach_new_node('stem_segment')
+#        else:
+#            node = self.segment_root.node.attach_new_node('stem_segment')
+#            node.set_z(self.segment_root.segment_length)
+#        self.node = node
+#        node.set_python_tag('tree_generator_data', self)
+#
+#    def calculate_splits(self):
+#        sd = self.stem_definition
+#        if (sd.segments == self.rest_segments):
+#            # First segment in stem does not split.
+#            splits_base = 0
+#        elif (sd.segments - 1 == self.rest_segments) and sd.trunk_splits:
+#            # Second segment in stem uses `trunk_splits`.
+#            splits_base = bd.trunk_splits
+#        else:
+#            # Third and later segments use `splits`.
+#            splits_base = bd.splits
+#    
+#        # Floyd-Steinberg-ishly diffused splitting determination
+#        splitting_acc = self.splitting_acc
+#        if slrng.random() <= splits_base - math.floor(splits_base) + splitting_acc:
+#            splits = math.floor(splits_base) + 1
+#        else:
+#            splits = math.floor(splits_base)
+#        splitting_acc -= splits - splits_base
+#    
+#        fecundity = self.fecundity / (splits + 1)
 
 
 
