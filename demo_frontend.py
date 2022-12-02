@@ -3,6 +3,8 @@ import random
 
 from panda3d.core import NodePath
 from panda3d.core import KeyboardButton
+from panda3d.core import PointLight
+from panda3d.core import AmbientLight
 
 from direct.showbase.ShowBase import ShowBase
 
@@ -70,5 +72,19 @@ base.accept('shift-1', replace_tree, extraArgs=[BoringTree, 0])
 #base.accept('shift-5', replace_tree, extraArgs=[CaliforniaBlackOak, 0])
 
 
+plight = PointLight('plight')
+plight.setColor((0.8, 0.8, 0.8, 1))
+plnp = render.attachNewNode(plight)
+plnp.setPos(10, 20, 30)
+render.setLight(plnp)
+
+
+alight = AmbientLight('alight')
+alight.setColor((0.2, 0.2, 0.2, 1))
+alnp = render.attachNewNode(alight)
+render.setLight(alnp)
+
+from panda3d.core import ShadeModelAttrib
+render.set_attrib(ShadeModelAttrib.make(ShadeModelAttrib.M_flat))
 replace_tree(tree_def=BoringTree, seed=0)
 base.run()
