@@ -28,12 +28,19 @@ class StemType(enum.Enum):
     LEAF = 2
 
 
+class StemCurvature(enum.Enum):
+    SINGLE = 1
+    DOUBLE = 2
+sc = StemCurvature
+
+
 class StemDefinition(enum.Enum):
     SEGMENTS = 1   # Number of segments in the stem
     LENGTH = 2     # Length of the stem
     RADIUS = 3     # Radius of the stem (FIXME: ...at the base?)
-    CURVE = 4      #
-    CuRVEBACK = 5  #
+    CURVATURE = 4  # 
+    CURVE = 5      #
+    CURVEBACK = 6  #
 
 
 class Segment(enum.Enum):
@@ -48,9 +55,12 @@ class Segment(enum.Enum):
 
 sd = StemDefinition
 BoringTree = {
-    sd.SEGMENTS: 10,
+    sd.SEGMENTS: 4,
     sd.LENGTH: 4.0,
-    sd.RADIUS: 0.5,
+    sd.RADIUS: 0.25,
+    sd.CURVATURE: sc.DOUBLE,
+    sd.CURVE: 30.0,
+    sd.CURVEBACK: 60.0,
 }
 
 
@@ -72,8 +82,21 @@ def expand(s):
         
     # If this is a new stem, set the rest segment number.
     if sg.STEM_ROOT not in s:
-        s[sg.STEM_ROOT] = self
+        s[sg.STEM_ROOT] = s
         s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS]
+
+    # Basic curvature
+    # FIXME: There's an underdocumented helical curvature, too.
+    if s[sg.DEFINITION][sd.CURVATURE] == sc.SINGLE:
+        curve = s[sg.DEFINITION][sd.CURVE] / s[sg.DEFINITION][sd.SEGMENTS]
+    elif s[sg.DEFINITION][sd.CURVATURE] == sc.DOUBLE:
+        if s[sg.REST_SEGMENTS] > s[sg.DEFINITION][sd.SEGMENTS] / 2.0:
+            curve = s[sg.DEFINITION][sd.CURVE] / (s[sg.DEFINITION][sd.SEGMENTS] / 2.0)
+        else:
+            curve = -s[sg.DEFINITION][sd.CURVEBACK] / (s[sg.DEFINITION][sd.SEGMENTS] / 2.0)
+    else:
+        raise Exception
+    s[sg.NODE].set_p(curve)
 
     # Create the next segment
     s[sg.CONTINUATIONS] = []

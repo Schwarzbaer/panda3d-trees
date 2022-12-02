@@ -10,6 +10,7 @@ from panda3d.core import GeomVertexFormat
 from panda3d.core import GeomVertexData
 from panda3d.core import GeomVertexWriter
 from panda3d.core import GeomTriangles
+from panda3d.core import GeomLines
 from panda3d.core import Geom
 from panda3d.core import GeomNode
 from panda3d.core import NodePath
@@ -34,8 +35,23 @@ class GeometryData(enum.Enum):
 
 gd = GeometryData
 
+
+# def linesegs(stem):
+#     tree_root_node = stem[sg.TREE_ROOT_NODE]
+#     lines = LineSegs()
+#     segs.set_color(1,1,1,1)
+#     segs.move_to(0,0,0)
+#     #segs.draw_to()
+# 
+#     segments = [stem]
+#     while segments:
+#         s = segments.pop()
+#         s[sg.NODE]
+#         segments += s[sg.CONTINUATIONS]
+#     return segs.create()
+
     
-def trimesh(stem, circle_segments=10):
+def trimesh(stem, circle_segments=3, bark_tris=True):
     # What vertex ID does each segment start at?
     current_vertex_index = 0
     segments = [stem]
@@ -70,12 +86,12 @@ def trimesh(stem, circle_segments=10):
             ),
         )
         color.addData4f(
-            Vec4(
-                random.random(),
-                random.random(),
-                random.random(),
-                1,
-            ),
+            Vec4(0.8,0.8,0.8,1),
+            #    random.random(),
+            #    random.random(),
+            #    random.random(),
+            #    1,
+            #),
         )
 
     segments = [(stem, 0)]
@@ -99,12 +115,13 @@ def trimesh(stem, circle_segments=10):
                 ),
             )
             color.addData4f(
-                Vec4(
-                    random.random(),
-                    random.random(),
-                    random.random(),
-                    1,
-                ),
+                Vec4(0.8,0.8,0.8,1),
+                # Vec4(
+                #     random.random(),
+                #     random.random(),
+                #     random.random(),
+                #     1,
+                # ),
             )
         for i in range(circle_segments):
             v_tl = own_start_index + i
@@ -112,11 +129,20 @@ def trimesh(stem, circle_segments=10):
             v_tr = own_start_index + (i + 1) % circle_segments
             v_br = parent_start_index + (i + 1) % circle_segments
 
-            tris = GeomTriangles(Geom.UHStatic)
-            tris.addVertices(v_tl, v_bl, v_tr)
-            tris.addVertices(v_br, v_tr, v_bl)
-            tris.closePrimitive()
-            geom.addPrimitive(tris)
+            if bark_tris:
+                tris = GeomTriangles(Geom.UHStatic)
+                tris.addVertices(v_tl, v_bl, v_tr)
+                tris.addVertices(v_br, v_tr, v_bl)
+                tris.closePrimitive()
+                geom.addPrimitive(tris)
+            else:
+                lines = GeomLines(Geom.UHStatic)
+                lines.addVertices(v_tl, v_bl)
+                lines.closePrimitive()
+                geom.addPrimitive(lines)
+                lines.addVertices(v_tr, v_br)
+                lines.closePrimitive()
+                geom.addPrimitive(lines)
 
         segments += [(sc, own_start_index) for sc in s[sg.CONTINUATIONS]]
     
