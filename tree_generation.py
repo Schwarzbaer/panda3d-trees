@@ -20,6 +20,8 @@ from tree_specs import BoringTree, SegmentType, SplitRotation
 #     of `bend` degrees, while in the second half they pitch down a
 #     total of `bend_back` degrees.
 #   * Helical: FIXME
+#   To each bend, a random amount of a magnitude of `sd.CURVE_VAR` is
+#   added.
 # After each segment (that is not the last in the stem), 
 
 
@@ -39,11 +41,14 @@ class StemDefinition(enum.Enum):
     LENGTH = 2     # Length of the stem
     RADIUS = 3     # Radius of the stem (FIXME: ...at the base?)
     CURVATURE = 4  # 
-    CURVE = 5      #
-    CURVEBACK = 6  #
+    CURVE = 5      # Curvature of the whole stem in degrees (half the stem in Stemurvature.DOUBLE)
+    CURVEBACK = 6  # Backwards curvature of the second half of the stem in DOUBLE mode.
+    CURVE_VAR = 7  # Magnitude of random vvariane to the curve over the stem; Divide by number of segments for variance per segment.
 
 
 class Segment(enum.Enum):
+    RNG_SEED = 8        # Seed for the random number generator.
+    RNG = 9             # The random nnumber generator itself.
     DEFINITION = 1      # The StemDefinition for this stem.
     TREE_ROOT_NODE = 2  # The NodePath representing the tree's starting point.
     STEM_ROOT = 3       # The first segment of the stem.
@@ -61,6 +66,7 @@ BoringTree = {
     sd.CURVATURE: sc.DOUBLE,
     sd.CURVE: 30.0,
     sd.CURVEBACK: 60.0,
+    sd.CURVE_VAR: 60.0,
 }
 
 
@@ -68,6 +74,11 @@ sg = Segment
 
 
 def expand(s):
+    if sg.RNG_SEED not in s:
+        s[sg.RNG_SEED] = 0
+    if sg.RNG not in s:
+        s[sg.RNG] = random.Random(s[sg.RNG_SEED])
+
     if sg.TREE_ROOT_NODE not in s:
         # This segment is the root of the tree
         s[sg.TREE_ROOT_NODE] = NodePath('tree_root')
@@ -96,6 +107,7 @@ def expand(s):
             curve = -s[sg.DEFINITION][sd.CURVEBACK] / (s[sg.DEFINITION][sd.SEGMENTS] / 2.0)
     else:
         raise Exception
+    curve += (s[sg.RNG].random() * 2.0 - 1.0) * s[sg.DEFINITION][sd.CURVE_VAR] / s[sg.DEFINITION][sd.SEGMENTS]
     s[sg.NODE].set_p(curve)
 
     # Create the next segment
@@ -104,6 +116,7 @@ def expand(s):
         s[sg.CONTINUATIONS].append(
             {
                 sg.DEFINITION: s[sg.DEFINITION],
+                sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
                 sg.TREE_ROOT_NODE: s[sg.TREE_ROOT_NODE],
                 sg.STEM_ROOT: s[sg.STEM_ROOT],
                 sg.PARENT_SEGMENT: s,

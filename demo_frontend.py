@@ -24,6 +24,7 @@ def replace_tree(tree_def=BoringTree, seed=None):
     rng = random.Random(seed)
     tree = {
         sg.DEFINITION: BoringTree,
+        sg.RNG_SEED: seed,
     }
     expand_fully(tree)
     tree_geom_node = geometry.trimesh(tree)
