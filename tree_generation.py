@@ -22,8 +22,18 @@ from tree_specs import BoringTree, SegmentType, SplitRotation
 #   * Helical: FIXME
 #   To each bend, a random amount of a magnitude of `sd.CURVE_VAR` is
 #   added.
-# After each segment (that is not the last in the stem), 
-
+# After each segment (that is not the last in the stem), there is a
+#   chance that several segments branch off of it (in addition to the
+#   one continuing the stem). The distribution of this chance is
+#   smoothed by a Floyd-Steinberg-like algorithm that uses an error
+#   accumulator.
+#   The number of new splits is
+#   * BASE_SPLITS for the first segment,
+#   * SPLITS for later ones,
+#  From the paper:
+#    For each recursive level, a global value holds an "error value" initialized to 0.0.
+#    Each time nSegSplits is used, this error is added to create a SegSplits_effective which is rounded to the nearest integer.
+#    The difference (SegSplits_effective-nSegSplits) is subtracted from the error.
 
 class StemType(enum.Enum):
     STEM = 1
@@ -37,25 +47,28 @@ sc = StemCurvature
 
 
 class StemDefinition(enum.Enum):
-    SEGMENTS = 1   # Number of segments in the stem
-    LENGTH = 2     # Length of the stem
-    RADIUS = 3     # Radius of the stem (FIXME: ...at the base?)
-    CURVATURE = 4  # 
-    CURVE = 5      # Curvature of the whole stem in degrees (half the stem in Stemurvature.DOUBLE)
-    CURVEBACK = 6  # Backwards curvature of the second half of the stem in DOUBLE mode.
-    CURVE_VAR = 7  # Magnitude of random vvariane to the curve over the stem; Divide by number of segments for variance per segment.
+    SEGMENTS      =  1  # Number of segments in the stem.
+    LENGTH        =  2  # Length of the stem.
+    RADIUS        =  3  # Radius of the stem (FIXME: ...at the base?)
+    CURVATURE     =  4  # Mode of curvature; Value is a StemCurvature member.
+    CURVE         =  5  # Curvature of the whole stem in degrees (half the stem in StemCurvature.DOUBLE)
+    CURVEBACK     =  6  # Backwards curvature of the second half of the stem in DOUBLE mode.
+    CURVE_VAR     =  7  # Magnitude of random variance to the curve over the stem; Divide by number of segments for variance per segment.
+    BASE_SPLITS   =  8  # Splits after a stem's first segment.
+    SPLITS        =  9  # Splits after later segments.
 
 
 class Segment(enum.Enum):
-    RNG_SEED = 8        # Seed for the random number generator.
-    RNG = 9             # The random nnumber generator itself.
-    DEFINITION = 1      # The StemDefinition for this stem.
-    TREE_ROOT_NODE = 2  # The NodePath representing the tree's starting point.
-    STEM_ROOT = 3       # The first segment of the stem.
-    PARENT_SEGMENT = 4  # The segment from which this one sprouts.
-    NODE = 5            # The NodePath representing this segment.
-    REST_SEGMENTS =  6  # The number of segments left in the stem, inluding this one.
-    CONTINUATIONS = 7   # Segments that continue the stem.
+    RNG_SEED       =  1  # Seed for the random number generator.
+    RNG            =  2  # The random nnumber generator itself.
+    DEFINITION     =  3  # The StemDefinition for this stem.
+    TREE_ROOT_NODE =  4  # The NodePath representing the tree's starting point.
+    STEM_ROOT      =  5  # The first segment of the stem.
+    PARENT_SEGMENT =  6  # The segment from which this one sprouts.
+    NODE           =  7  # The NodePath representing this segment.
+    REST_SEGMENTS  =  8  # The number of segments left in the stem, inluding this one.
+    CONTINUATIONS  =  9  # Segments that continue the stem.
+    SPLITTING_ACC  = 10  # Rounding error accumulator for splitting; Stored on the stem's root.
 
 
 sd = StemDefinition
@@ -73,12 +86,15 @@ BoringTree = {
 sg = Segment
 
 
-def expand(s):
+
+def set_up_rng(s):
     if sg.RNG_SEED not in s:
         s[sg.RNG_SEED] = 0
     if sg.RNG not in s:
         s[sg.RNG] = random.Random(s[sg.RNG_SEED])
 
+
+def hierarchy_and_node(s):
     if sg.TREE_ROOT_NODE not in s:
         # This segment is the root of the tree
         s[sg.TREE_ROOT_NODE] = NodePath('tree_root')
@@ -90,13 +106,15 @@ def expand(s):
     else:
         s[sg.NODE] = s[sg.PARENT_SEGMENT][sg.NODE].attach_new_node('tree_segment')
     s[sg.NODE].set_z(s[sg.DEFINITION][sd.LENGTH] / s[sg.DEFINITION][sd.SEGMENTS])
-        
-    # If this is a new stem, set the rest segment number.
+    
+    # If this is a new stem, set the rest segment number and splitting accumulator.
     if sg.STEM_ROOT not in s:
         s[sg.STEM_ROOT] = s
         s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS]
+        s[sg.SPLITTING_ACC] = 0.0
 
-    # Basic curvature
+
+def basic_curvature(s):
     # FIXME: There's an underdocumented helical curvature, too.
     if s[sg.DEFINITION][sd.CURVATURE] == sc.SINGLE:
         curve = s[sg.DEFINITION][sd.CURVE] / s[sg.DEFINITION][sd.SEGMENTS]
@@ -109,6 +127,27 @@ def expand(s):
         raise Exception
     curve += (s[sg.RNG].random() * 2.0 - 1.0) * s[sg.DEFINITION][sd.CURVE_VAR] / s[sg.DEFINITION][sd.SEGMENTS]
     s[sg.NODE].set_p(curve)
+
+
+def create_splits(s):
+    if s[sg.REST_SEGMENTS] == s[sg.DEFINITION][sd.SEGMENTS]:  # First segment
+        split_value = s[sg.DEFINITION][sg.BASE_SPLITS]
+    else:  # Later segment
+        split_value = s[sg.DEFINITION][sg.SPLITS]
+    error = s[sg.STEM_ROOT][sg.SPLITTING_ACC]
+    split_value += error
+    splits = math.floor(split_value)
+    bonus_split_chance = split_value % 1
+    if s[sg.RNG].random() >= bonus_split_chance:
+        splits += 1
+    s[sg.STEM_ROOT][sg.SPLITTING_ACC]
+
+
+def expand(s):
+    set_up_rng(s)
+    hierarchy_and_node(s)
+    basic_curvature(s)
+    create_splits(s)
 
     # Create the next segment
     s[sg.CONTINUATIONS] = []
