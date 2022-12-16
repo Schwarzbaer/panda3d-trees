@@ -18,16 +18,6 @@ from panda3d.core import NodePath
 from tree_generation import sd  # Stem definition enum
 from tree_generation import sg  # Segment enum
 
-# stemlet_model = base.loader.load_model('models/smiley')
-# stemlet_model.reparent_to(node)
-# 
-# stemlet_model.set_pos(0, 0, stemlet_length / 2.0)
-# stemlet_model.set_sz(stemlet_length * 0.5)
-# stemlet_model.set_sx(stemlet_diameter * 0.5)
-# stemlet_model.set_sy(stemlet_diameter * 0.5)
-
-# stemlet lineseg model
-
 
 class GeometryData(enum.Enum):
     START_VERTEX = 1  # The number of the first vertex in this segment's geometry.
@@ -36,22 +26,7 @@ class GeometryData(enum.Enum):
 gd = GeometryData
 
 
-# def linesegs(stem):
-#     tree_root_node = stem[sg.TREE_ROOT_NODE]
-#     lines = LineSegs()
-#     segs.set_color(1,1,1,1)
-#     segs.move_to(0,0,0)
-#     #segs.draw_to()
-# 
-#     segments = [stem]
-#     while segments:
-#         s = segments.pop()
-#         s[sg.NODE]
-#         segments += s[sg.CONTINUATIONS]
-#     return segs.create()
-
-    
-def trimesh(stem, circle_segments=3, bark_tris=True):
+def trimesh(stem, circle_segments=10, bark_tris=True):
     # What vertex ID does each segment start at?
     current_vertex_index = 0
     segments = [stem]
@@ -86,7 +61,7 @@ def trimesh(stem, circle_segments=3, bark_tris=True):
             ),
         )
         color.addData4f(
-            Vec4(0.8,0.8,0.8,1),
+            Vec4(0.0, 0.0, 0.0, 1),
             #    random.random(),
             #    random.random(),
             #    random.random(),
@@ -115,7 +90,14 @@ def trimesh(stem, circle_segments=3, bark_tris=True):
                 ),
             )
             color.addData4f(
-                Vec4(0.8,0.8,0.8,1),
+                {
+                    3: Vec4(1.0, 1.0, 1.0, 1),
+                    2: Vec4(1.0, 0.0, 0.0, 1),
+                    1: Vec4(0.0, 1.0, 0.0, 1),
+                    0: Vec4(0.0, 0.0, 1.0, 1),
+                }[s[sg.REST_SEGMENTS]]
+                
+                # Vec4(0.8, 0.8, 0.8, 1),
                 # Vec4(
                 #     random.random(),
                 #     random.random(),

@@ -29,6 +29,7 @@ def replace_tree(tree_def=BoringTree, seed=None):
     expand_fully(tree)
     tree_geom_node = geometry.trimesh(tree)
     tree_root = render.attach_new_node(tree_geom_node)
+    #import pdb; pdb.set_trace()
 
 
 def move_camera(task):
@@ -58,8 +59,8 @@ global tree_root
 tree_root = render.attach_new_node('empty')
 base.disable_mouse()
 base.accept('escape', sys.exit)
-base.camera.set_pos(0, 0, 2)
-base.cam.set_y(-15)
+base.camera.set_pos(0, 0, 4)
+base.cam.set_y(-20)
 base.add_task(move_camera)
 base.accept('1', replace_tree, extraArgs=[BoringTree])
 #base.accept('2', replace_tree, extraArgs=[QuakingAspen])
@@ -73,19 +74,19 @@ base.accept('shift-1', replace_tree, extraArgs=[BoringTree, 0])
 #base.accept('shift-5', replace_tree, extraArgs=[CaliforniaBlackOak, 0])
 
 
-plight = PointLight('plight')
-plight.setColor((0.8, 0.8, 0.8, 1))
-plnp = render.attachNewNode(plight)
-plnp.setPos(10, 20, 30)
-render.setLight(plnp)
+# plight = PointLight('plight')
+# plight.setColor((0.8, 0.8, 0.8, 1))
+# plnp = render.attachNewNode(plight)
+# plnp.setPos(10, 20, 30)
+# render.setLight(plnp)
+# 
+# 
+# alight = AmbientLight('alight')
+# alight.setColor((0.2, 0.2, 0.2, 1))
+# alnp = render.attachNewNode(alight)
+# render.setLight(alnp)
 
-
-alight = AmbientLight('alight')
-alight.setColor((0.2, 0.2, 0.2, 1))
-alnp = render.attachNewNode(alight)
-render.setLight(alnp)
-
-from panda3d.core import ShadeModelAttrib
-render.set_attrib(ShadeModelAttrib.make(ShadeModelAttrib.M_flat))
+#from panda3d.core import ShadeModelAttrib
+#render.set_attrib(ShadeModelAttrib.make(ShadeModelAttrib.M_flat))
 replace_tree(tree_def=BoringTree, seed=0)
 base.run()

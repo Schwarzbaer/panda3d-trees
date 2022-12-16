@@ -5,8 +5,6 @@ import enum
 from panda3d.core import Vec3
 from panda3d.core import NodePath
 
-from tree_specs import BoringTree, SegmentType, SplitRotation
-
 
 # A tree's wooden parts are made of a hierarchy of stems.
 # Stems are sequences of `sd.SEGMENT` segments.
@@ -30,10 +28,7 @@ from tree_specs import BoringTree, SegmentType, SplitRotation
 #   The number of new splits is
 #   * BASE_SPLITS for the first segment,
 #   * SPLITS for later ones,
-#  From the paper:
-#    For each recursive level, a global value holds an "error value" initialized to 0.0.
-#    Each time nSegSplits is used, this error is added to create a SegSplits_effective which is rounded to the nearest integer.
-#    The difference (SegSplits_effective-nSegSplits) is subtracted from the error.
+
 
 class StemType(enum.Enum):
     STEM = 1
@@ -43,19 +38,21 @@ class StemType(enum.Enum):
 class StemCurvature(enum.Enum):
     SINGLE = 1
     DOUBLE = 2
-sc = StemCurvature
 
 
 class StemDefinition(enum.Enum):
-    SEGMENTS      =  1  # Number of segments in the stem.
-    LENGTH        =  2  # Length of the stem.
-    RADIUS        =  3  # Radius of the stem (FIXME: ...at the base?)
-    CURVATURE     =  4  # Mode of curvature; Value is a StemCurvature member.
-    CURVE         =  5  # Curvature of the whole stem in degrees (half the stem in StemCurvature.DOUBLE)
-    CURVEBACK     =  6  # Backwards curvature of the second half of the stem in DOUBLE mode.
-    CURVE_VAR     =  7  # Magnitude of random variance to the curve over the stem; Divide by number of segments for variance per segment.
-    BASE_SPLITS   =  8  # Splits after a stem's first segment.
-    SPLITS        =  9  # Splits after later segments.
+    SEGMENTS       =  1  # Number of segments in the stem.
+    LENGTH         =  2  # Length of the stem.
+    RADIUS         =  3  # Radius of the stem (FIXME: ...at the base?)
+    CURVATURE      =  4  # Mode of curvature; Value is a StemCurvature member.
+    CURVE          =  5  # Curvature of the whole stem in degrees (half the stem in StemCurvature.DOUBLE)
+    CURVEBACK      =  6  # Backwards curvature of the second half of the stem in DOUBLE mode.
+    CURVE_VAR      =  7  # Magnitude of random variance to the curve over the stem; Divide by number of segments for variance per segment.
+    CLONES         =  8  # The number/chance of/for clones splitting off this segment (in addition to the stem's continuation).
+    BASE_CLONES    =  9  # Supercedes CLONES on a stem's first segment.
+    SPLIT          = 10  # Angle at which a new clone pitches away from its parent.
+    SPLIT_VAR      = 11  # Variance to the split angle.
+    SPLIT_ROTATION = 12  # An input to a new clone's rotation around the tree's upward vector.
 
 
 class Segment(enum.Enum):
@@ -69,22 +66,32 @@ class Segment(enum.Enum):
     REST_SEGMENTS  =  8  # The number of segments left in the stem, inluding this one.
     CONTINUATIONS  =  9  # Segments that continue the stem.
     SPLITTING_ACC  = 10  # Rounding error accumulator for splitting; Stored on the stem's root.
+    IS_NEW_CLONE   = 11  # Is this segment created through stem splitting?
 
 
+sc = StemCurvature
 sd = StemDefinition
+sg = Segment
+
+
+# FIXME: Move to species definitions file
 BoringTree = {
-    sd.SEGMENTS: 4,
-    sd.LENGTH: 4.0,
+    sd.SEGMENTS: 3,
+    sd.LENGTH: 3.0,
     sd.RADIUS: 0.25,
     sd.CURVATURE: sc.DOUBLE,
-    sd.CURVE: 30.0,
-    sd.CURVEBACK: 60.0,
-    sd.CURVE_VAR: 60.0,
+    sd.CURVE: 0.0,
+    sd.CURVEBACK: 0.0,
+    sd.CURVE_VAR: 0.0,
+    sd.CLONES: 0.0,
+    sd.BASE_CLONES: 1.0,
+    sd.SPLIT: 90.0,
+    sd.SPLIT_VAR: 0.0,
+    sd.SPLIT_ROTATION: 160.0,
 }
 
 
-sg = Segment
-
+up = Vec3(0, 0, 1)
 
 
 def set_up_rng(s):
@@ -110,7 +117,7 @@ def hierarchy_and_node(s):
     # If this is a new stem, set the rest segment number and splitting accumulator.
     if sg.STEM_ROOT not in s:
         s[sg.STEM_ROOT] = s
-        s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS]
+        s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS] - 1
         s[sg.SPLITTING_ACC] = 0.0
 
 
@@ -129,29 +136,51 @@ def basic_curvature(s):
     s[sg.NODE].set_p(curve)
 
 
-def create_splits(s):
-    if s[sg.REST_SEGMENTS] == s[sg.DEFINITION][sd.SEGMENTS]:  # First segment
-        split_value = s[sg.DEFINITION][sg.BASE_SPLITS]
+def clone_curvature(s):
+    if sg.IS_NEW_CLONE in s:  # It's value is always `True`
+        local_tree_up = s[sg.NODE].get_relative_vector(
+            s[sg.TREE_ROOT_NODE],
+            up,
+        )
+        declination = local_tree_up.angle_deg(up)
+        split_angle = s[sg.DEFINITION][sd.SPLIT] + s[sg.RNG].uniform(-1, 1) * s[sg.DEFINITION][sd.SPLIT_VAR] - declination
+        split_angle = max(0, split_angle)
+        s[sg.NODE].set_p(s[sg.NODE], split_angle)
+
+        # Split rotation around tree's z
+        angle_magnitude = 20.0 + 0.75 * (30.0 + abs(declination - 90.0)) * s[sg.RNG].random() ** 2
+        split_rotation = angle_magnitude * s[sg.RNG].choice([-1, 1]) * s[sg.DEFINITION][sd.SPLIT_ROTATION]
+        s[sg.NODE].set_hpr(
+            s[sg.NODE],
+            s[sg.NODE].get_relative_vector(
+                s[sg.TREE_ROOT_NODE],
+                Vec3(split_rotation, 0, 0),
+            ),
+        )
+
+
+def create_continuations(s):
+    if s[sg.REST_SEGMENTS] == s[sg.DEFINITION][sd.SEGMENTS] - 1:  # First segment
+        clones = s[sg.DEFINITION][sd.BASE_CLONES]
     else:  # Later segment
-        split_value = s[sg.DEFINITION][sg.SPLITS]
+        clones = s[sg.DEFINITION][sd.CLONES]
+
     error = s[sg.STEM_ROOT][sg.SPLITTING_ACC]
-    split_value += error
-    splits = math.floor(split_value)
-    bonus_split_chance = split_value % 1
-    if s[sg.RNG].random() >= bonus_split_chance:
-        splits += 1
-    s[sg.STEM_ROOT][sg.SPLITTING_ACC]
+    clones_smoothed = clones + error
+    
+    bonus_split_chance = clones_smoothed % 1
+    if s[sg.RNG].random() <= bonus_split_chance:
+        clones_integered = math.ceil(clones_smoothed)
+    else:
+        clones_integered = max(0, math.floor(clones_smoothed))
 
-
-def expand(s):
-    set_up_rng(s)
-    hierarchy_and_node(s)
-    basic_curvature(s)
-    create_splits(s)
+    error_correction = clones_integered - clones
+    s[sg.STEM_ROOT][sg.SPLITTING_ACC] -= error_correction
 
     # Create the next segment
     s[sg.CONTINUATIONS] = []
-    if s[sg.REST_SEGMENTS] > 1:
+    if s[sg.REST_SEGMENTS] > 0: # Not the last segment?
+        # Regular continuations
         s[sg.CONTINUATIONS].append(
             {
                 sg.DEFINITION: s[sg.DEFINITION],
@@ -162,6 +191,27 @@ def expand(s):
                 sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
             },
         )
+        # Clones
+        for idx in range(clones_integered):
+            s[sg.CONTINUATIONS].append(
+                {
+                    sg.DEFINITION: s[sg.DEFINITION],
+                    sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
+                    sg.TREE_ROOT_NODE: s[sg.TREE_ROOT_NODE],
+                    sg.STEM_ROOT: s[sg.STEM_ROOT],
+                    sg.PARENT_SEGMENT: s,
+                    sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
+                    sg.IS_NEW_CLONE: True,
+                },
+            )
+
+def expand(s):
+    set_up_rng(s)
+    hierarchy_and_node(s)
+    basic_curvature(s)
+    clone_curvature(s)
+    create_continuations(s)
+    print(f"{s[sg.REST_SEGMENTS]}: {s[sg.REST_SEGMENTS]}, {s[sg.NODE].get_pos(s[sg.TREE_ROOT_NODE])}")
 
 
 def expand_fully(s):
@@ -170,86 +220,6 @@ def expand_fully(s):
         sheet = sheets.pop()
         expand(sheet)
         sheets += sheet[sg.CONTINUATIONS]
-
-
-
-
-
-
-#class StemSegment:
-#    def __init__(self, stem_definition, tree_root_node, segment_root=None,
-#                 rest_segments=None,
-#                 rng_seed=0):
-#        """
-#        """
-#        if rest_segments is None:
-#            rest_segments = stem_definition.segments
-#        print(rest_segments)
-#
-#        self.stem_definition = stem_definition
-#        self.tree_root_node = tree_root_node
-#        self.segment_root = segment_root
-#        self.rest_segments = rest_segments
-#        self.rng_seed = rng_seed
-#
-#        # DEBUG
-#        self.segment_length = 1.0
-#        self.segment_diameter = 1.0
-#
-#        # Children
-#        self.stem_continuations = []
-#        self.branch_children = []
-#
-#    def expand(self):
-#        self.figure_out_hierarchy_and_attach_node()
-#
-#        if self.rest_segments > 1:
-#            continuation = StemSegment(
-#                self.stem_definition,
-#                self.tree_root_node,  # It's on the same tree
-#                segment_root=self,  # This segment is the next one's root
-#                rest_segments=self.rest_segments-1,
-#                rng_seed=0, # FIXME
-#            )
-#            self.stem_continuations.append(continuation)
-#        
-#        for child in self.stem_continuations:
-#            child.expand()
-#        for child in self.branch_children:
-#            child.expand()
-#
-#    def figure_out_hierarchy_and_attach_node(self):
-#        if self.segment_root is None:
-#            node = self.tree_root_node.attach_new_node('stem_segment')
-#        else:
-#            node = self.segment_root.node.attach_new_node('stem_segment')
-#            node.set_z(self.segment_root.segment_length)
-#        self.node = node
-#        node.set_python_tag('tree_generator_data', self)
-#
-#    def calculate_splits(self):
-#        sd = self.stem_definition
-#        if (sd.segments == self.rest_segments):
-#            # First segment in stem does not split.
-#            splits_base = 0
-#        elif (sd.segments - 1 == self.rest_segments) and sd.trunk_splits:
-#            # Second segment in stem uses `trunk_splits`.
-#            splits_base = bd.trunk_splits
-#        else:
-#            # Third and later segments use `splits`.
-#            splits_base = bd.splits
-#    
-#        # Floyd-Steinberg-ishly diffused splitting determination
-#        splitting_acc = self.splitting_acc
-#        if slrng.random() <= splits_base - math.floor(splits_base) + splitting_acc:
-#            splits = math.floor(splits_base) + 1
-#        else:
-#            splits = math.floor(splits_base)
-#        splitting_acc -= splits - splits_base
-#    
-#        fecundity = self.fecundity / (splits + 1)
-
-
 
 
 ###
