@@ -56,17 +56,18 @@ class StemDefinition(enum.Enum):
 
 
 class Segment(enum.Enum):
-    RNG_SEED       =  1  # Seed for the random number generator.
-    RNG            =  2  # The random nnumber generator itself.
-    DEFINITION     =  3  # The StemDefinition for this stem.
-    TREE_ROOT_NODE =  4  # The NodePath representing the tree's starting point.
-    STEM_ROOT      =  5  # The first segment of the stem.
-    PARENT_SEGMENT =  6  # The segment from which this one sprouts.
-    NODE           =  7  # The NodePath representing this segment.
-    REST_SEGMENTS  =  8  # The number of segments left in the stem, inluding this one.
-    CONTINUATIONS  =  9  # Segments that continue the stem.
-    SPLITTING_ACC  = 10  # Rounding error accumulator for splitting; Stored on the stem's root.
-    IS_NEW_CLONE   = 11  # Is this segment created through stem splitting?
+    RNG_SEED           =  1  # Seed for the random number generator.
+    RNG                =  2  # The random nnumber generator itself.
+    DEFINITION         =  3  # The StemDefinition for this stem.
+    TREE_ROOT_NODE     =  4  # The NodePath representing the tree's starting point.
+    STEM_ROOT          =  5  # The first segment of the stem.
+    PARENT_SEGMENT     =  6  # The segment from which this one sprouts.
+    NODE               =  7  # The NodePath representing this segment.
+    REST_SEGMENTS      =  8  # The number of segments left in the stem, inluding this one.
+    CONTINUATIONS      =  9  # Segments that continue the stem.
+    SPLITTING_ACC      = 10  # Rounding error accumulator for splitting; Stored on the stem's root.
+    IS_NEW_CLONE       = 11  # Is this segment created through stem splitting?
+    CLONE_BENDING_DEBT = 12  # Curvature from a split that needs to be compensated for
 
 
 sc = StemCurvature
@@ -121,6 +122,7 @@ def hierarchy_and_node(s):
         s[sg.STEM_ROOT] = s
         s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS]
         s[sg.SPLITTING_ACC] = 0.0
+        s[sg.CLONE_BENDING_DEBT] = 0.0
 
     # Move the node into place
     if not is_tree_root:
@@ -139,6 +141,13 @@ def basic_curvature(s):
     else:
         raise Exception
     curve += (s[sg.RNG].random() * 2.0 - 1.0) * s[sg.DEFINITION][sd.CURVE_VAR] / s[sg.DEFINITION][sd.SEGMENTS]
+
+    # Compensating split debt
+    compensation = s[sg.CLONE_BENDING_DEBT] / s[sg.REST_SEGMENTS]
+    curve -= compensation
+    s[sg.CLONE_BENDING_DEBT] -= compensation
+
+    # ...and apply.
     s[sg.NODE].set_p(curve)
 
 
@@ -152,6 +161,7 @@ def clone_curvature(s):
         split_angle = s[sg.DEFINITION][sd.SPLIT] + s[sg.RNG].uniform(-1, 1) * s[sg.DEFINITION][sd.SPLIT_VAR] - declination
         split_angle = max(0, split_angle)
         s[sg.NODE].set_p(s[sg.NODE], split_angle)
+        s[sg.CLONE_BENDING_DEBT] += split_angle
 
         # Split rotation around tree's z
         angle_magnitude = 20.0 + 0.75 * (30.0 + abs(declination - 90.0)) * s[sg.RNG].random() ** 2
@@ -195,6 +205,7 @@ def create_continuations(s):
                 sg.STEM_ROOT: s[sg.STEM_ROOT],
                 sg.PARENT_SEGMENT: s,
                 sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
+                sg.CLONE_BENDING_DEBT: s[sg.CLONE_BENDING_DEBT],
             },
         )
         # Clones
@@ -208,6 +219,7 @@ def create_continuations(s):
                     sg.PARENT_SEGMENT: s,
                     sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
                     sg.IS_NEW_CLONE: True,
+                    sg.CLONE_BENDING_DEBT: s[sg.CLONE_BENDING_DEBT],
                 },
             )
 
