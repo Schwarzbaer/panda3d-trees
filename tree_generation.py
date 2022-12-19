@@ -76,18 +76,18 @@ sg = Segment
 
 # FIXME: Move to species definitions file
 BoringTree = {
-    sd.SEGMENTS: 3,
-    sd.LENGTH: 3.0,
+    sd.SEGMENTS: 10,
+    sd.LENGTH: 8.0,
     sd.RADIUS: 0.25,
-    sd.CURVATURE: sc.DOUBLE,
-    sd.CURVE: 0.0,
+    sd.CURVATURE: sc.SINGLE,
+    sd.CURVE: 10.0,
     sd.CURVEBACK: 0.0,
-    sd.CURVE_VAR: 0.0,
+    sd.CURVE_VAR: 10.0,
     sd.CLONES: 0.0,
-    sd.BASE_CLONES: 1.0,
-    sd.SPLIT: 90.0,
-    sd.SPLIT_VAR: 0.0,
-    sd.SPLIT_ROTATION: 160.0,
+    sd.BASE_CLONES: 1.5,
+    sd.SPLIT: 80.0,
+    sd.SPLIT_VAR: 30.0,
+    sd.SPLIT_ROTATION: 90.0,
 }
 
 
@@ -102,23 +102,29 @@ def set_up_rng(s):
 
 
 def hierarchy_and_node(s):
+    is_tree_root = False
+
     if sg.TREE_ROOT_NODE not in s:
         # This segment is the root of the tree
         s[sg.TREE_ROOT_NODE] = NodePath('tree_root')
+        is_tree_root = True
 
-    # Attach the segment's node and move it into place
+    # Attach the segment's node
     if sg.PARENT_SEGMENT not in s:
         # This segment is (still) the tree's root
         s[sg.NODE] = s[sg.TREE_ROOT_NODE].attach_new_node('tree_segment')
     else:
         s[sg.NODE] = s[sg.PARENT_SEGMENT][sg.NODE].attach_new_node('tree_segment')
-    s[sg.NODE].set_z(s[sg.DEFINITION][sd.LENGTH] / s[sg.DEFINITION][sd.SEGMENTS])
     
     # If this is a new stem, set the rest segment number and splitting accumulator.
     if sg.STEM_ROOT not in s:
         s[sg.STEM_ROOT] = s
-        s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS] - 1
+        s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS]
         s[sg.SPLITTING_ACC] = 0.0
+
+    # Move the node into place
+    if not is_tree_root:
+        s[sg.NODE].set_z(s[sg.DEFINITION][sd.LENGTH] / s[sg.DEFINITION][sd.SEGMENTS])
 
 
 def basic_curvature(s):
@@ -160,7 +166,7 @@ def clone_curvature(s):
 
 
 def create_continuations(s):
-    if s[sg.REST_SEGMENTS] == s[sg.DEFINITION][sd.SEGMENTS] - 1:  # First segment
+    if s[sg.REST_SEGMENTS] == s[sg.DEFINITION][sd.SEGMENTS]:  # First segment
         clones = s[sg.DEFINITION][sd.BASE_CLONES]
     else:  # Later segment
         clones = s[sg.DEFINITION][sd.CLONES]
@@ -208,10 +214,12 @@ def create_continuations(s):
 def expand(s):
     set_up_rng(s)
     hierarchy_and_node(s)
-    basic_curvature(s)
-    clone_curvature(s)
-    create_continuations(s)
-    print(f"{s[sg.REST_SEGMENTS]}: {s[sg.REST_SEGMENTS]}, {s[sg.NODE].get_pos(s[sg.TREE_ROOT_NODE])}")
+    if s[sg.REST_SEGMENTS] > 0:
+        basic_curvature(s)
+        clone_curvature(s)
+        create_continuations(s)
+    else:
+        s[sg.CONTINUATIONS] = []
 
 
 def expand_fully(s):

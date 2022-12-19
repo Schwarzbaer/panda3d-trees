@@ -90,12 +90,11 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
                 ),
             )
             color.addData4f(
-                {
-                    3: Vec4(1.0, 1.0, 1.0, 1),
-                    2: Vec4(1.0, 0.0, 0.0, 1),
-                    1: Vec4(0.0, 1.0, 0.0, 1),
-                    0: Vec4(0.0, 0.0, 1.0, 1),
-                }[s[sg.REST_SEGMENTS]]
+                Vec4(s[sg.REST_SEGMENTS] % 2,
+                     s[sg.REST_SEGMENTS] % 4 // 2,
+                     s[sg.REST_SEGMENTS] % 8 // 4,
+                     1,
+                ),
                 
                 # Vec4(0.8, 0.8, 0.8, 1),
                 # Vec4(
