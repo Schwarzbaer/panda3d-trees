@@ -7,10 +7,11 @@ from panda3d.core import PointLight
 from panda3d.core import AmbientLight
 
 from direct.showbase.ShowBase import ShowBase
+from direct.gui.OnscreenText import OnscreenText
 
-from tree_generation import BoringTree  # QuakingAspen, BlackTupelo, WeepingWillow, CaliforniaBlackOak
-from tree_generation import sg  # Segment enum
-from tree_generation import expand_fully
+from homebrew import BoringTree  # QuakingAspen, BlackTupelo, WeepingWillow, CaliforniaBlackOak
+from homebrew import sg  # Segment enum
+from homebrew import expand_fully
 import geometry
 
 
@@ -19,12 +20,14 @@ def replace_tree(tree_def=BoringTree, seed=None):
         seed = random.random()
 
     global tree_root
+    global tree_age
     tree_root.remove_node()
 
     rng = random.Random(seed)
     tree = {
         sg.DEFINITION: BoringTree,
         sg.RNG_SEED: seed,
+        sg.AGE: tree_age,
     }
     expand_fully(tree)
     tree_geom_node = geometry.trimesh(tree)
@@ -52,26 +55,34 @@ def move_camera(task):
     return task.cont
 
 
+def change_tree_age(delta):
+    global tree_age
+    tree_age += delta
+    text_age['text'] = str(tree_age)
+
+
 # Actual application
 
 ShowBase()
+
+
 global tree_root
+global tree_age
+global text_age
 tree_root = render.attach_new_node('empty')
+tree_age = 1.0
+text_age = OnscreenText(text=str(tree_age), pos=(-0.9, 0.9), scale=0.07)
+
+
 base.disable_mouse()
 base.accept('escape', sys.exit)
 base.camera.set_pos(0, 0, 4)
 base.cam.set_y(-20)
 base.add_task(move_camera)
-base.accept('1', replace_tree, extraArgs=[BoringTree])
-#base.accept('2', replace_tree, extraArgs=[QuakingAspen])
-#base.accept('3', replace_tree, extraArgs=[BlackTupelo])
-#base.accept('4', replace_tree, extraArgs=[WeepingWillow])
-#base.accept('5', replace_tree, extraArgs=[CaliforniaBlackOak])
-base.accept('shift-1', replace_tree, extraArgs=[BoringTree, 0])
-#base.accept('shift-2', replace_tree, extraArgs=[QuakingAspen, 0])
-#base.accept('shift-3', replace_tree, extraArgs=[BlackTupelo, 0])
-#base.accept('shift-4', replace_tree, extraArgs=[WeepingWillow, 0])
-#base.accept('shift-5', replace_tree, extraArgs=[CaliforniaBlackOak, 0])
+base.accept('1', replace_tree, extraArgs=[BoringTree, 0])
+base.accept('shift-1', replace_tree, extraArgs=[BoringTree])
+base.accept('r', change_tree_age, extraArgs=[0.1])
+base.accept('f', change_tree_age, extraArgs=[-0.1])
 
 
 # plight = PointLight('plight')

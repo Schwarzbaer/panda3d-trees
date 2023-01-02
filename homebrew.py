@@ -6,28 +6,41 @@ from panda3d.core import Vec3
 from panda3d.core import NodePath
 
 
-# A tree's wooden parts are made of a hierarchy of stems.
-# Stems are sequences of `sd.SEGMENT` segments.
-# Each segment may have one or more `sg.CONTINUATIONS`, continuing
-#   the current stem. A segment without continuations ends this run of
-#   the stem.
-# There are three basic modes of how a stem bends and twists:
-#   * Basic: Each segment pitches up relative to its parent. The total
-#     bent of the tree is `bend` degrees.
-#   * S-shaped: In the first half of the stem, segments pitch up a total
-#     of `bend` degrees, while in the second half they pitch down a
-#     total of `bend_back` degrees.
-#   * Helical: FIXME
-#   To each bend, a random amount of a magnitude of `sd.CURVE_VAR` is
-#   added.
-# After each segment (that is not the last in the stem), there is a
-#   chance that several segments branch off of it (in addition to the
-#   one continuing the stem). The distribution of this chance is
-#   smoothed by a Floyd-Steinberg-like algorithm that uses an error
-#   accumulator.
-#   The number of new splits is
-#   * BASE_SPLITS for the first segment,
-#   * SPLITS for later ones,
+def constant(value):
+    def inner(r):
+        return value
+    return inner
+
+
+def linear(v_from, v_to):
+    def inner(r):
+        return v_from + (v_to - v_from) * r
+    return inner
+
+
+def noisy_linear(v_from, v_to, v_noise):
+    def inner(r, rng):
+        return v_from + (v_to - v_from) * r + rng.uniform(-1, 1) * v_noise
+    return inner
+
+
+def boring_radius(v_from, v_to):
+    def inner(age, r, _rng):
+        return (v_from + (v_to - v_from) * r) * age
+    return inner
+
+
+def s_curvature(lower_curve, higher_curve, variation, crumple, age_ratio):
+    def inner(age, trunk_ratio, rng):
+        if trunk_ratio <= 0.5:
+            curve = lower_curve
+        else:
+            curve = higher_curve
+        curve += rng.uniform(-1, 1) * variation
+
+        pitch = rng.uniform(-1, 1) * crumple
+        return (pitch * age_ratio(age), curve * age_ratio(age))
+    return inner
 
 
 class StemType(enum.Enum):
@@ -42,32 +55,37 @@ class StemCurvature(enum.Enum):
 
 class StemDefinition(enum.Enum):
     SEGMENTS       =  1  # Number of segments in the stem.
-    LENGTH         =  2  # Length of the stem.
-    RADIUS         =  3  # Radius of the stem (FIXME: ...at the base?)
-    CURVATURE      =  4  # Mode of curvature; Value is a StemCurvature member.
-    CURVE          =  5  # Curvature of the whole stem in degrees (half the stem in StemCurvature.DOUBLE)
-    CURVEBACK      =  6  # Backwards curvature of the second half of the stem in DOUBLE mode.
-    CURVE_VAR      =  7  # Magnitude of random variance to the curve over the stem; Divide by number of segments for variance per segment.
-    CLONES         =  8  # The number/chance of/for clones splitting off this segment (in addition to the stem's continuation).
-    BASE_CLONES    =  9  # Supercedes CLONES on a stem's first segment.
-    SPLIT          = 10  # Angle at which a new clone pitches away from its parent.
-    SPLIT_VAR      = 11  # Variance to the split angle.
-    SPLIT_ROTATION = 12  # An input to a new clone's rotation around the tree's upward vector.
+    LENGTH         =  2  # age -> length of the stem
+    RADIUS         =  3  # age, ratio along stem length -> diameter
+    BENDING        =  4  # age, ratio along stem length -> pitch, roll
+    STEM_SPLITS    =  5
+    BASE_SPLITS    =  6
 
 
 class Segment(enum.Enum):
+    # Administrative
     RNG_SEED           =  1  # Seed for the random number generator.
     RNG                =  2  # The random nnumber generator itself.
     DEFINITION         =  3  # The StemDefinition for this stem.
-    TREE_ROOT_NODE     =  4  # The NodePath representing the tree's starting point.
-    STEM_ROOT          =  5  # The first segment of the stem.
-    PARENT_SEGMENT     =  6  # The segment from which this one sprouts.
-    NODE               =  7  # The NodePath representing this segment.
-    REST_SEGMENTS      =  8  # The number of segments left in the stem, inluding this one.
-    CONTINUATIONS      =  9  # Segments that continue the stem.
-    SPLITTING_ACC      = 10  # Rounding error accumulator for splitting; Stored on the stem's root.
-    IS_NEW_CLONE       = 11  # Is this segment created through stem splitting?
-    CLONE_BENDING_DEBT = 12  # Curvature from a split that needs to be compensated for
+    # Parameters
+    AGE                =  4
+    # Segment hierarchy
+    TREE_ROOT          =  5  # The first segment of the tree.
+    STEM_ROOT          =  6  # The first segment of the stem.
+    CONTINUATIONS      =  7  # Segments that continue the stem.
+    PARENT_SEGMENT     =  8  # The segment from which this one sprouts.
+    REST_SEGMENTS      =  9  # The number of segments left in the stem, inluding this one.
+    # Node hierarchy
+    TREE_ROOT_NODE     = 10  # The NodePath representing the tree's starting point.
+    LENGTH_NODE        = 11  # A NodePath raise along a segment's length, in zero orientation
+    NODE               = 12  # The NodePath attached to the LENGTH_NODE, used solely for orientation
+    # Geometry data
+    LENGTH             = 13  # Length of the segment
+    RADIUS             = 14  # The segment's radius ad the top.
+    ROOT_RADIUS        = 15  # Trunk radius at the root node (ratio = 0), present only on the TREE_ROOT
+    # SPLITTING_ACC      = 10  # Rounding error accumulator for splitting; Stored on the stem's root.
+    # IS_NEW_CLONE       = 11  # Is this segment created through stem splitting?
+    # CLONE_BENDING_DEBT = 12  # Curvature from a split that needs to be compensated for
 
 
 sc = StemCurvature
@@ -78,22 +96,29 @@ sg = Segment
 # FIXME: Move to species definitions file
 BoringTree = {
     sd.SEGMENTS: 10,
-    sd.LENGTH: 8.0,
-    sd.RADIUS: 0.25,
-    sd.CURVATURE: sc.SINGLE,
-    sd.CURVE: 10.0,
-    sd.CURVEBACK: 0.0,
-    sd.CURVE_VAR: 10.0,
-    sd.CLONES: 0.0,
-    sd.BASE_CLONES: 1.5,
-    sd.SPLIT: 80.0,
-    sd.SPLIT_VAR: 30.0,
-    sd.SPLIT_ROTATION: 90.0,
+    sd.LENGTH: noisy_linear(1, 8, 0),
+    sd.RADIUS: boring_radius(0.5, 0.3),
+    sd.BENDING: s_curvature(
+        45,                # Lower curvature
+        -60,               # Higher curvature
+        135,               # Curvature noisiness
+        135,               # Noisiness along the other axis
+        linear(0.2, 1.0),  # Age-based magnitude of the overall effect
+    ),
+    # sd.CLONES: 0.0,
+    # sd.BASE_CLONES: 1.5,
+    # sd.SPLIT: 80.0,
+    # sd.SPLIT_VAR: 30.0,
+    # sd.SPLIT_ROTATION: 90.0,
 }
 
 
 up = Vec3(0, 0, 1)
 
+
+# set_up_rng
+#   RNG_SEED (defaults to 0 if not present) -> RNG
+# hierarchy
 
 def set_up_rng(s):
     if sg.RNG_SEED not in s:
@@ -102,136 +127,182 @@ def set_up_rng(s):
         s[sg.RNG] = random.Random(s[sg.RNG_SEED])
 
 
-def hierarchy_and_node(s):
-    is_tree_root = False
-
-    if sg.TREE_ROOT_NODE not in s:
-        # This segment is the root of the tree
+def hierarchy(s):
+    if sg.TREE_ROOT not in s:
+        s[sg.TREE_ROOT] = s
         s[sg.TREE_ROOT_NODE] = NodePath('tree_root')
-        is_tree_root = True
 
-    # Attach the segment's node
-    if sg.PARENT_SEGMENT not in s:
-        # This segment is (still) the tree's root
-        s[sg.NODE] = s[sg.TREE_ROOT_NODE].attach_new_node('tree_segment')
-    else:
-        s[sg.NODE] = s[sg.PARENT_SEGMENT][sg.NODE].attach_new_node('tree_segment')
-    
-    # If this is a new stem, set the rest segment number and splitting accumulator.
+    # If this is a new stem, set the administrative numbers.
     if sg.STEM_ROOT not in s:
         s[sg.STEM_ROOT] = s
-        s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS]
-        s[sg.SPLITTING_ACC] = 0.0
-        s[sg.CLONE_BENDING_DEBT] = 0.0
+        s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS] - 1
 
-    # Move the node into place
-    if not is_tree_root:
-        s[sg.NODE].set_z(s[sg.DEFINITION][sd.LENGTH] / s[sg.DEFINITION][sd.SEGMENTS])
-
-
-def basic_curvature(s):
-    # FIXME: There's an underdocumented helical curvature, too.
-    if s[sg.DEFINITION][sd.CURVATURE] == sc.SINGLE:
-        curve = s[sg.DEFINITION][sd.CURVE] / s[sg.DEFINITION][sd.SEGMENTS]
-    elif s[sg.DEFINITION][sd.CURVATURE] == sc.DOUBLE:
-        if s[sg.REST_SEGMENTS] > s[sg.DEFINITION][sd.SEGMENTS] / 2.0:
-            curve = s[sg.DEFINITION][sd.CURVE] / (s[sg.DEFINITION][sd.SEGMENTS] / 2.0)
-        else:
-            curve = -s[sg.DEFINITION][sd.CURVEBACK] / (s[sg.DEFINITION][sd.SEGMENTS] / 2.0)
-    else:
-        raise Exception
-    curve += (s[sg.RNG].random() * 2.0 - 1.0) * s[sg.DEFINITION][sd.CURVE_VAR] / s[sg.DEFINITION][sd.SEGMENTS]
-
-    # Compensating split debt
-    compensation = s[sg.CLONE_BENDING_DEBT] / s[sg.REST_SEGMENTS]
-    curve -= compensation
-    s[sg.CLONE_BENDING_DEBT] -= compensation
-
-    # ...and apply.
-    s[sg.NODE].set_p(curve)
-
-
-def clone_curvature(s):
-    if sg.IS_NEW_CLONE in s:  # It's value is always `True`
-        local_tree_up = s[sg.NODE].get_relative_vector(
-            s[sg.TREE_ROOT_NODE],
-            up,
-        )
-        declination = local_tree_up.angle_deg(up)
-        split_angle = s[sg.DEFINITION][sd.SPLIT] + s[sg.RNG].uniform(-1, 1) * s[sg.DEFINITION][sd.SPLIT_VAR] - declination
-        split_angle = max(0, split_angle)
-        s[sg.NODE].set_p(s[sg.NODE], split_angle)
-        s[sg.CLONE_BENDING_DEBT] += split_angle
-
-        # Split rotation around tree's z
-        angle_magnitude = 20.0 + 0.75 * (30.0 + abs(declination - 90.0)) * s[sg.RNG].random() ** 2
-        split_rotation = angle_magnitude * s[sg.RNG].choice([-1, 1]) * s[sg.DEFINITION][sd.SPLIT_ROTATION]
-        s[sg.NODE].set_hpr(
-            s[sg.NODE],
-            s[sg.NODE].get_relative_vector(
-                s[sg.TREE_ROOT_NODE],
-                Vec3(split_rotation, 0, 0),
-            ),
-        )
-
-
-def create_continuations(s):
-    if s[sg.REST_SEGMENTS] == s[sg.DEFINITION][sd.SEGMENTS]:  # First segment
-        clones = s[sg.DEFINITION][sd.BASE_CLONES]
-    else:  # Later segment
-        clones = s[sg.DEFINITION][sd.CLONES]
-
-    error = s[sg.STEM_ROOT][sg.SPLITTING_ACC]
-    clones_smoothed = clones + error
-    
-    bonus_split_chance = clones_smoothed % 1
-    if s[sg.RNG].random() <= bonus_split_chance:
-        clones_integered = math.ceil(clones_smoothed)
-    else:
-        clones_integered = max(0, math.floor(clones_smoothed))
-
-    error_correction = clones_integered - clones
-    s[sg.STEM_ROOT][sg.SPLITTING_ACC] -= error_correction
-
-    # Create the next segment
     s[sg.CONTINUATIONS] = []
+
+
+def attach_node(s):
+    if sg.TREE_ROOT_NODE in s:
+        parent_node = s[sg.TREE_ROOT_NODE]
+    else:
+        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
+    length_node = parent_node.attach_new_node('tree_segment_length')
+    node = length_node.attach_new_node('tree_segment_rotation')
+    s[sg.LENGTH_NODE] = length_node
+    s[sg.NODE] = node
+
+
+def length(s):
+    age = s[sg.TREE_ROOT][sg.AGE]
+    length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
+    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+    node = s[sg.LENGTH_NODE]
+    rng = s[sg.RNG]
+    node.set_z(length_func(age, rng) / segments)
+
+
+def continuations(s):
     if s[sg.REST_SEGMENTS] > 0: # Not the last segment?
         # Regular continuations
         s[sg.CONTINUATIONS].append(
             {
-                sg.DEFINITION: s[sg.DEFINITION],
                 sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
-                sg.TREE_ROOT_NODE: s[sg.TREE_ROOT_NODE],
+                sg.TREE_ROOT: s[sg.TREE_ROOT],
                 sg.STEM_ROOT: s[sg.STEM_ROOT],
                 sg.PARENT_SEGMENT: s,
                 sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
-                sg.CLONE_BENDING_DEBT: s[sg.CLONE_BENDING_DEBT],
             },
         )
-        # Clones
-        for idx in range(clones_integered):
-            s[sg.CONTINUATIONS].append(
-                {
-                    sg.DEFINITION: s[sg.DEFINITION],
-                    sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
-                    sg.TREE_ROOT_NODE: s[sg.TREE_ROOT_NODE],
-                    sg.STEM_ROOT: s[sg.STEM_ROOT],
-                    sg.PARENT_SEGMENT: s,
-                    sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
-                    sg.IS_NEW_CLONE: True,
-                    sg.CLONE_BENDING_DEBT: s[sg.CLONE_BENDING_DEBT],
-                },
-            )
+
+
+def radius(s):
+    age = s[sg.TREE_ROOT][sg.AGE]
+    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+    rest_segments = s[sg.REST_SEGMENTS]
+    radius_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.RADIUS]
+    ratio = (segments - rest_segments) / segments
+    rng = s[sg.RNG]
+
+    if sg.TREE_ROOT_NODE in s:  # Trunk of the tree
+        s[sg.ROOT_RADIUS] = radius_func(age, 0, rng)
+
+    s[sg.RADIUS] = radius_func(age, ratio, rng)
+
+
+def bending(s):
+    age = s[sg.TREE_ROOT][sg.AGE]
+    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+    rest_segments = s[sg.REST_SEGMENTS]
+    bending_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.BENDING]
+    ratio = (segments - rest_segments) / segments
+    rng = s[sg.RNG]
+
+    pitch, roll = bending_func(age, ratio, rng)
+
+    s[sg.NODE].set_hpr(0, pitch / segments, roll / segments)
+
+# def basic_curvature(s):
+#     # FIXME: There's an underdocumented helical curvature, too.
+#     if s[sg.DEFINITION][sd.CURVATURE] == sc.SINGLE:
+#         curve = s[sg.DEFINITION][sd.CURVE] / s[sg.DEFINITION][sd.SEGMENTS]
+#     elif s[sg.DEFINITION][sd.CURVATURE] == sc.DOUBLE:
+#         if s[sg.REST_SEGMENTS] > s[sg.DEFINITION][sd.SEGMENTS] / 2.0:
+#             curve = s[sg.DEFINITION][sd.CURVE] / (s[sg.DEFINITION][sd.SEGMENTS] / 2.0)
+#         else:
+#             curve = -s[sg.DEFINITION][sd.CURVEBACK] / (s[sg.DEFINITION][sd.SEGMENTS] / 2.0)
+#     else:
+#         raise Exception
+#     curve += (s[sg.RNG].random() * 2.0 - 1.0) * s[sg.DEFINITION][sd.CURVE_VAR] / s[sg.DEFINITION][sd.SEGMENTS]
+# 
+#     # Compensating split debt
+#     compensation = s[sg.CLONE_BENDING_DEBT] / s[sg.REST_SEGMENTS]
+#     curve -= compensation
+#     s[sg.CLONE_BENDING_DEBT] -= compensation
+# 
+#     # ...and apply.
+#     s[sg.NODE].set_p(curve)
+# 
+# 
+# def clone_curvature(s):
+#     if sg.IS_NEW_CLONE in s:  # It's value is always `True`
+#         local_tree_up = s[sg.NODE].get_relative_vector(
+#             s[sg.TREE_ROOT_NODE],
+#             up,
+#         )
+#         declination = local_tree_up.angle_deg(up)
+#         split_angle = s[sg.DEFINITION][sd.SPLIT] + s[sg.RNG].uniform(-1, 1) * s[sg.DEFINITION][sd.SPLIT_VAR] - declination
+#         split_angle = max(0, split_angle)
+#         s[sg.NODE].set_p(s[sg.NODE], split_angle)
+#         s[sg.CLONE_BENDING_DEBT] += split_angle
+# 
+#         # Split rotation around tree's z
+#         angle_magnitude = 20.0 + 0.75 * (30.0 + abs(declination - 90.0)) * s[sg.RNG].random() ** 2
+#         split_rotation = angle_magnitude * s[sg.RNG].choice([-1, 1]) * s[sg.DEFINITION][sd.SPLIT_ROTATION]
+#         s[sg.NODE].set_hpr(
+#             s[sg.NODE],
+#             s[sg.NODE].get_relative_vector(
+#                 s[sg.TREE_ROOT_NODE],
+#                 Vec3(split_rotation, 0, 0),
+#             ),
+#         )
+# 
+# 
+# def create_continuations(s):
+#     if s[sg.REST_SEGMENTS] == s[sg.DEFINITION][sd.SEGMENTS]:  # First segment
+#         clones = s[sg.DEFINITION][sd.BASE_CLONES]
+#     else:  # Later segment
+#         clones = s[sg.DEFINITION][sd.CLONES]
+# 
+#     error = s[sg.STEM_ROOT][sg.SPLITTING_ACC]
+#     clones_smoothed = clones + error
+#     
+#     bonus_split_chance = clones_smoothed % 1
+#     if s[sg.RNG].random() <= bonus_split_chance:
+#         clones_integered = math.ceil(clones_smoothed)
+#     else:
+#         clones_integered = max(0, math.floor(clones_smoothed))
+# 
+#     error_correction = clones_integered - clones
+#     s[sg.STEM_ROOT][sg.SPLITTING_ACC] -= error_correction
+# 
+#     # Create the next segment
+#     if s[sg.REST_SEGMENTS] > 0: # Not the last segment?
+#         # Regular continuations
+#         s[sg.CONTINUATIONS].append(
+#             {
+#                 sg.DEFINITION: s[sg.DEFINITION],
+#                 sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
+#                 sg.TREE_ROOT_NODE: s[sg.TREE_ROOT_NODE],
+#                 sg.STEM_ROOT: s[sg.STEM_ROOT],
+#                 sg.PARENT_SEGMENT: s,
+#                 sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
+#                 sg.CLONE_BENDING_DEBT: s[sg.CLONE_BENDING_DEBT],
+#             },
+#         )
+#         # Clones
+#         for idx in range(clones_integered):
+#             s[sg.CONTINUATIONS].append(
+#                 {
+#                     sg.DEFINITION: s[sg.DEFINITION],
+#                     sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
+#                     sg.TREE_ROOT_NODE: s[sg.TREE_ROOT_NODE],
+#                     sg.STEM_ROOT: s[sg.STEM_ROOT],
+#                     sg.PARENT_SEGMENT: s,
+#                     sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
+#                     sg.IS_NEW_CLONE: True,
+#                     sg.CLONE_BENDING_DEBT: s[sg.CLONE_BENDING_DEBT],
+#                 },
+#             )
+
 
 def expand(s):
     set_up_rng(s)
-    hierarchy_and_node(s)
+    hierarchy(s)
+    attach_node(s)
+    length(s)
+    radius(s)
+    bending(s)
     if s[sg.REST_SEGMENTS] > 0:
-        basic_curvature(s)
-        clone_curvature(s)
-        create_continuations(s)
-    else:
-        s[sg.CONTINUATIONS] = []
+        continuations(s)
 
 
 def expand_fully(s):
