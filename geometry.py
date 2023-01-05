@@ -21,6 +21,7 @@ from homebrew import sg  # Segment enum
 
 class GeometryData(enum.Enum):
     START_VERTEX = 1  # The number of the first vertex in this segment's geometry.
+    TWIST_ANGLE  = 2  # Heading accumulated throuugh stem splitting.
 
 
 gd = GeometryData
@@ -29,11 +30,19 @@ gd = GeometryData
 def trimesh(stem, circle_segments=10, bark_tris=True):
     # What vertex ID does each segment start at?
     current_vertex_index = 0
+    stem[gd.TWIST_ANGLE] = 0
     segments = [stem]
     while segments:
         s = segments.pop()
+
         current_vertex_index += circle_segments
         s[gd.START_VERTEX] = current_vertex_index
+
+        if sg.PARENT_SEGMENT in s:
+            parent_twist = s[sg.PARENT_SEGMENT][gd.TWIST_ANGLE]
+            own_twist = s[sg.FOOT_NODE].get_h()
+            s[gd.TWIST_ANGLE] = parent_twist + own_twist
+
         segments += s[sg.CONTINUATIONS]
 
     # Set up the vertex arrays and associated stuff.
@@ -76,7 +85,7 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
         # FIXME: Create vertices, draw triangles
         turtle.reparent_to(s[sg.NODE])
         for i in range(circle_segments):
-            turtle.set_h(360.0 / circle_segments * i)
+            turtle.set_h(360.0 / circle_segments * i - s[gd.TWIST_ANGLE])
             vertex.addData3f(
                 s[sg.TREE_ROOT][sg.TREE_ROOT_NODE].get_relative_point(
                     turtle,
