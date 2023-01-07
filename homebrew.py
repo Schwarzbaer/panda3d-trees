@@ -54,6 +54,39 @@ def linear_split_angle(angle_from, angle_to, angle_variation, age_ratio):
     return inner
     
 
+def constant_splitting_func(chance):
+    def inner(ratio, accumulator, rng):
+        if rng.random() <= chance:
+            splits = 1
+        else:
+            splits = 0
+        return splits, accumulator
+    return inner
+
+
+def error_smoothing(split_chance_func):
+    def inner(ratio, accumulator, rng):
+        split_chance = split_chance_func(ratio)
+        split_chance_smoothed = split_chance + accumulator
+        # We'll consider the number beore the decimal point as the
+        # lower limit for the number of splits, and the one after it as
+        # the chance for one more.
+        bonus_split_chance = split_chance_smoothed % 1
+        if rng.random() <= bonus_split_chance:
+            splits = math.ceil(split_chance_smoothed)
+        else:
+            # Since a lot of negative error may have accumulated, we
+            # need to take care not to wind up with a negative number of
+            # splits.
+            splits = max(0, math.floor(split_chance_smoothed))
+
+        error_correction = splits - split_chance
+        accumulator -= error_correction
+
+        return splits, accumulator
+    return inner
+
+
 class StemType(enum.Enum):
     STEM = 1
     LEAF = 2
@@ -69,9 +102,8 @@ class StemDefinition(enum.Enum):
     LENGTH         =  2  # age -> length of the stem
     RADIUS         =  3  # age, ratio along stem length -> diameter
     BENDING        =  4  # age, ratio along stem length -> pitch, roll
-    STEM_SPLITS    =  5
-    BASE_SPLITS    =  6
-    SPLIT_ANGLE    =  7
+    SPLIT_CHANCE   =  5  # ratio, accumlator -> chance, accumlator
+    SPLIT_ANGLE    =  6
 
 
 class Segment(enum.Enum):
@@ -98,8 +130,7 @@ class Segment(enum.Enum):
     ROOT_RADIUS        = 16  # Trunk radius at the root node (ratio = 0), present only on the TREE_ROOT
     # Stem splitting
     IS_NEW_SPLIT       = 17  # Is this segment created through stem splitting?
-    # 
-    # SPLITTING_ACC      = 10  # Rounding error accumulator for splitting; Stored on the stem's root.
+    SPLIT_ACCUMULATOR  = 18  # Rounding error accumulator for splitting; Stored on the stem's root.
     # CLONE_BENDING_DEBT = 12  # Curvature from a split that needs to be compensated for
 
 
@@ -120,8 +151,7 @@ BoringTree = {
         135,               # Noisiness along the other axis
         linear(0.2, 1.0),  # Age-based magnitude of the overall effect
     ),
-    sd.BASE_SPLITS: 0.1,
-    sd.STEM_SPLITS: 0.1,
+    sd.SPLIT_CHANCE: error_smoothing(constant(0.1)),
     sd.SPLIT_ANGLE: linear_split_angle(
         60,
         30,
@@ -154,6 +184,7 @@ def hierarchy(s):
     if sg.STEM_ROOT not in s:
         s[sg.STEM_ROOT] = s
         s[sg.REST_SEGMENTS] = s[sg.DEFINITION][sd.SEGMENTS] - 1
+        s[sg.SPLIT_ACCUMULATOR] = 0.0
 
     s[sg.CONTINUATIONS] = []
 
@@ -217,12 +248,13 @@ def continuations(s):
         )
 
         # Stem splits
-        if rest_segments + 1 == segments:  # Is stem root?
-            split_chance = definition[sd.BASE_SPLITS]
-        else:
-            split_chance = definition[sd.STEM_SPLITS]
+        ratio = (segments - rest_segments) / segments
+        accumulator = s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR]
+        split_chance_func = definition[sd.SPLIT_CHANCE]
+        splits, accumulator = split_chance_func(ratio, accumulator, rng)
 
-        if rng.random() <= split_chance:  # A split is generated
+        s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR] = accumulator
+        for idx in range(splits):
             s[sg.CONTINUATIONS].append(
                 {
                     sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
@@ -238,8 +270,8 @@ def radius(s):
     age = s[sg.TREE_ROOT][sg.AGE]
     segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
     rest_segments = s[sg.REST_SEGMENTS]
-    radius_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.RADIUS]
     ratio = (segments - rest_segments) / segments
+    radius_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.RADIUS]
     rng = s[sg.RNG]
 
     if sg.TREE_ROOT_NODE in s:  # Trunk of the tree
