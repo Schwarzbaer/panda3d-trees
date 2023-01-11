@@ -20,31 +20,15 @@ from homebrew import sg  # Segment enum
 
 
 class GeometryData(enum.Enum):
-    START_VERTEX = 1  # The number of the first vertex in this segment's geometry.
-    TWIST_ANGLE  = 2  # Heading accumulated throuugh stem splitting.
+    FOOT_RING_START_VERTEX = 1  # 
+    TOP_RING_START_VERTEX  = 2  # 
+    TWIST_ANGLE            = 3  # Heading accumulated throuugh stem splitting.
 
 
 gd = GeometryData
 
 
 def trimesh(stem, circle_segments=10, bark_tris=True):
-    # What vertex ID does each segment start at?
-    current_vertex_index = 0
-    stem[gd.TWIST_ANGLE] = 0
-    segments = [stem]
-    while segments:
-        s = segments.pop()
-
-        current_vertex_index += circle_segments
-        s[gd.START_VERTEX] = current_vertex_index
-
-        if sg.PARENT_SEGMENT in s:
-            parent_twist = s[sg.PARENT_SEGMENT][gd.TWIST_ANGLE]
-            own_twist = s[sg.FOOT_NODE].get_h()
-            s[gd.TWIST_ANGLE] = parent_twist + own_twist
-
-        segments += s[sg.CONTINUATIONS]
-
     # Set up the vertex arrays and associated stuff.
     vformat = GeomVertexFormat.getV3n3c4()
     vdata = GeomVertexData("Data", vformat, Geom.UHDynamic)
@@ -53,37 +37,13 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
     color = GeomVertexWriter(vdata, 'color')
     geom = Geom(vdata)
     #geom.modify_vertex_data().set_num_rows(current_vertex_index + circle_segments)
-    turtle = s[sg.TREE_ROOT][sg.TREE_ROOT_NODE].attach_new_node('turtle')
+    turtle = NodePath('turtle')
 
-    # Add the initial circle
-    for i in range(circle_segments):
-        turtle.set_h(360.0 / circle_segments * i)
-        v_pos = stem[sg.TREE_ROOT][sg.TREE_ROOT_NODE].get_relative_point(
-            turtle,
-            Vec3(0, stem[sg.ROOT_RADIUS], 0),
-        )
-        vertex.addData3f(v_pos)
-        normal.addData3f(
-            stem[sg.TREE_ROOT][sg.TREE_ROOT_NODE].get_relative_vector(
-                turtle,
-                Vec3(0, 1, 0),
-            ),
-        )
-        color.addData4f(
-            Vec4(0.0, 0.0, 0.0, 1),
-            #    random.random(),
-            #    random.random(),
-            #    random.random(),
-            #    1,
-            #),
-        )
-
-    segments = [(stem, 0)]
-    while segments:
-        s, parent_start_index = segments.pop()
-        own_start_index = s[gd.START_VERTEX]
+    # We'll be placing rings of vertices around the top of each segment,
+    # and around the foot of stems.
+    def draw_vertex_circle(s, circle_segments, entry=sg.NODE):
         # FIXME: Create vertices, draw triangles
-        turtle.reparent_to(s[sg.NODE])
+        turtle.reparent_to(s[entry])
         for i in range(circle_segments):
             turtle.set_h(360.0 / circle_segments * i - s[gd.TWIST_ANGLE])
             vertex.addData3f(
@@ -103,8 +63,6 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
                      s[sg.REST_SEGMENTS] % 4 // 2,
                      s[sg.REST_SEGMENTS] % 8 // 4,
                      1,
-                ),
-                
                 # Vec4(0.8, 0.8, 0.8, 1),
                 # Vec4(
                 #     random.random(),
@@ -112,7 +70,61 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
                 #     random.random(),
                 #     1,
                 # ),
+                ),
             )
+
+
+    # We got through the whole tree, determine which rings a segment
+    # has (each has one at the top, and stem roots one at the bottom),
+    # and note the starting numbers of their runs of vertices.
+    # Since segments may control their heading, we need to twist the
+    # top rings counter to that, or the mesh shows hourglass shapes.
+    segments = [stem]
+    current_vertex_index = 0
+
+    while segments:
+        s = segments.pop()
+
+        # Untwisting
+        if sg.TREE_ROOT_NODE not in s and sg.IS_NEW_BRANCH not in s:
+            parent_twist = s[sg.PARENT_SEGMENT][gd.TWIST_ANGLE]
+            own_twist = s[sg.FOOT_NODE].get_h()
+            s[gd.TWIST_ANGLE] = parent_twist + own_twist
+        else:
+            s[gd.TWIST_ANGLE] = 0
+
+        # Rings at feet of first segments of a stem
+        if sg.TREE_ROOT_NODE in s or sg.IS_NEW_BRANCH in s:
+            if sg.TREE_ROOT_NODE in s:
+                circle_node = sg.TREE_ROOT_NODE
+            else:
+                circle_node = sg.FOOT_NODE
+            draw_vertex_circle(s, circle_segments, circle_node)
+            s[gd.FOOT_RING_START_VERTEX] = current_vertex_index
+            current_vertex_index += circle_segments
+
+        # Rings at the top of stems
+        draw_vertex_circle(s, circle_segments, sg.NODE)
+        s[gd.TOP_RING_START_VERTEX] = current_vertex_index
+        current_vertex_index += circle_segments
+
+        # ...and don't orget about the segments that dangle from this.
+        segments += s[sg.CONTINUATIONS]
+        segments += s[sg.BRANCHES]
+
+    # Now we go through all the segments again to connect the vertex
+    # rings into meshes.
+    segments = [stem]
+    while segments:
+        s = segments.pop()
+
+        own_start_index = s[gd.TOP_RING_START_VERTEX]
+        if sg.TREE_ROOT_NODE in s or sg.IS_NEW_BRANCH in s:
+            # This node's top ring connects to its foot ring
+            parent_start_index = s[gd.FOOT_RING_START_VERTEX]
+        else:
+            parent_start_index = s[sg.PARENT_SEGMENT][gd.TOP_RING_START_VERTEX]
+
         for i in range(circle_segments):
             v_tl = own_start_index + i
             v_bl = parent_start_index + i
@@ -134,8 +146,10 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
                 lines.closePrimitive()
                 geom.addPrimitive(lines)
 
-        segments += [(sc, own_start_index) for sc in s[sg.CONTINUATIONS]]
-    
+        segments += s[sg.CONTINUATIONS]
+        segments += s[sg.BRANCHES]
+
+    # ...and now we pack it up all neat and tidy.
     node = GeomNode('geom_node')
     node.add_geom(geom)
     return node

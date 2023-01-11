@@ -96,6 +96,12 @@ def error_smoothing(split_chance_func):
     return inner
 
 
+def branch_density(ratio_func):
+    def inner(age, ratio, rng):
+        return ratio_func(age, ratio, rng)
+    return inner
+
+
 class StemType(enum.Enum):
     STEM = 1
     LEAF = 2
@@ -115,6 +121,7 @@ class StemDefinition(enum.Enum):
     SPLIT_CHANCE     =  5  # ratio, accumlator -> chance, accumlator
     SPLIT_ANGLE      =  6
     CHILD_DEFINITION =  7  # StemDefinition of the next level of branches
+    BRANCH_DENSITY   =  8
 
 
 class Segment(enum.Enum):
@@ -137,16 +144,18 @@ class Segment(enum.Enum):
     LENGTH_NODE        = 13  # A NodePath raise along a segment's length, in zero orientation
     NODE               = 14  # The NodePath attached to the LENGTH_NODE, used solely for orientation
     # Geometry data
-    LENGTH             = 15  # Length of the segment
-    RADIUS             = 16  # The segment's radius ad the top.
-    ROOT_RADIUS        = 17  # Trunk radius at the root node (ratio = 0), present only on the TREE_ROOT
+    TREE_LENGTH        = 15
+    STEM_LENGTH        = 16
+    LENGTH             = 17  # Length of the segment
+    RADIUS             = 18  # The segment's radius ad the top.
+    ROOT_RADIUS        = 19  # Trunk radius at the root node (ratio = 0), present only on the TREE_ROOT
     # Stem splitting
-    IS_NEW_SPLIT       = 18  # Is this segment created through stem splitting?
-    SPLIT_ACCUMULATOR  = 19  # Rounding error accumulator for splitting; Stored on the stem's root.
+    IS_NEW_SPLIT       = 20  # Is this segment created through stem splitting?
+    SPLIT_ACCUMULATOR  = 21  # Rounding error accumulator for splitting; Stored on the stem's root.
     # CLONE_BENDING_DEBT = 12  # Curvature from a split that needs to be compensated for
     # Branching
-    IS_NEW_BRANCH      = 20
-    
+    IS_NEW_BRANCH      = 22
+
 
 sc = StemCurvature
 sd = StemDefinition
@@ -154,8 +163,8 @@ sg = Segment
 
 
 # FIXME: Move to species definitions file
-BoringTree = {
-    sd.NAME: "Willowish Trunk",
+BoringWillowish = {
+    # sd.NAME: "Willowish Trunk",
     sd.SEGMENTS: 10,
     sd.LENGTH: noisy_linear_length(1, 8, 0),
     sd.RADIUS: boring_radius(0.5, 0.1),
@@ -174,15 +183,56 @@ BoringTree = {
         linear(0.8, 1.0),
     ),
     sd.CHILD_DEFINITION: {
-        sd.NAME: "Willowish Branch",
-        sd.SEGMENTS: 1,
-        sd.LENGTH: constant(1.0),
+        # sd.NAME: "Willowish Branch",
+        sd.SEGMENTS: 10,
+        sd.LENGTH: constant(4.0),
         sd.RADIUS: constant(0.1),
         sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
-        sd.SPLIT_CHANCE: constant(0.0),
+        sd.SPLIT_CHANCE: constant_splitting_func(0.0),
         sd.SPLIT_ANGLE: constant(0.0),
     },
 }
+
+BoringFirish = {
+    sd.NAME: "Firish Trunk",
+    sd.SEGMENTS: 10,
+    sd.LENGTH: noisy_linear_length(1, 8, 0),
+    sd.RADIUS: boring_radius(0.3, 0.1),
+    sd.BENDING: s_curvature(
+        0,                 # Lower curvature
+        0,                 # Higher curvature
+        10,                # Curvature noisiness
+        10,                # Noisiness along the other axis
+        linear(0.2, 1.0),  # Age-based magnitude of the overall effect
+    ),
+    sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
+    sd.CHILD_DEFINITION: {
+        sd.NAME: "Firish Branch",
+        sd.SEGMENTS: 1,
+        sd.LENGTH: constant(1.0),
+        sd.RADIUS: constant(0.01),
+        sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
+    },
+}
+
+BoringBoringish = {
+    sd.NAME: "Trunk",
+    sd.SEGMENTS: 2,
+    sd.LENGTH: noisy_linear_length(1, 8, 0),
+    sd.RADIUS: boring_radius(0.3, 0.1),
+    sd.BENDING: s_curvature(
+        0,                 # Lower curvature
+        0,                 # Higher curvature
+        0,                 # Curvature noisiness
+        0,                 # Noisiness along the other axis
+        linear(0.2, 1.0),  # Age-based magnitude of the overall effect
+    ),
+}
+
+
+#BoringTree = BoringWillowish
+BoringTree = BoringFirish
+#BoringTree = BoringBoringish
 
 
 up = Vec3(0, 0, 1)
@@ -216,8 +266,10 @@ def hierarchy(s):
 
 
 def attach_node(s):
-    if sg.TREE_ROOT_NODE in s:
+    if sg.TREE_ROOT_NODE in s:  # Root of the tree
         parent_node = s[sg.TREE_ROOT_NODE]
+    elif sg.IS_NEW_BRANCH in s:  # Root of the branch
+        parent_node = s[sg.PARENT_SEGMENT][sg.FOOT_NODE]
     else:
         parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
     foot_node = parent_node.attach_new_node('tree_segment foot')
@@ -247,14 +299,38 @@ def split_curvature(s):
 
 
 def length(s):
-    age = s[sg.TREE_ROOT][sg.AGE]
-    length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
-    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
-    node = s[sg.LENGTH_NODE]
-    rng = s[sg.RNG]
+    if sg.TREE_ROOT_NODE in s:
+        # On the tree's root, the tree's overall length is determined on the tree root.
+        age = s[sg.TREE_ROOT][sg.AGE]
+        length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
+        rng = s[sg.RNG]
 
-    length = length_func(age, 0, rng) / segments
-    node.set_z(length)
+        length = length_func(age, 0, rng)
+        s[sg.TREE_LENGTH] = length
+        s[sg.STEM_LENGTH] = length
+    elif sg.IS_NEW_BRANCH in s:
+        # A branch's length is determined in relation to its parent, but we're gonna cheat for now. FIXME
+        age = s[sg.TREE_ROOT][sg.AGE]
+        length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
+        rng = s[sg.RNG]
+
+        length = length_func(age, 0, rng)
+        s[sg.STEM_LENGTH] = length
+
+    # What is this stem's length per segment?
+    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+    stem_length = s[sg.STEM_ROOT][sg.STEM_LENGTH]
+    segment_legth = stem_length / segments
+
+    node = s[sg.LENGTH_NODE]
+    node.set_z(segment_legth)
+    s[sg.LENGTH] = segment_legth
+
+
+def branch_curvature(s):
+    if sg.IS_NEW_BRANCH in s:
+        s[sg.FOOT_NODE].set_p(-90)
+        s[sg.FOOT_NODE].set_z(s[sg.PARENT_SEGMENT][sg.LENGTH] * s[sg.IS_NEW_BRANCH])
 
 
 def continuations(s):
@@ -262,7 +338,7 @@ def continuations(s):
     segments = definition[sd.SEGMENTS]
     rest_segments = s[sg.REST_SEGMENTS]
     rng = s[sg.RNG]
-    
+
     if rest_segments > 0: # Not the last segment?
         # Regular continuations
         s[sg.CONTINUATIONS].append(
@@ -276,32 +352,38 @@ def continuations(s):
         )
 
         # Stem splits
-        ratio = (segments - rest_segments) / segments
-        accumulator = s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR]
-        split_chance_func = definition[sd.SPLIT_CHANCE]
-        splits, accumulator = split_chance_func(ratio, accumulator, rng)
+        if sd.SPLIT_CHANCE in definition:
+            ratio = (segments - rest_segments) / segments
+            accumulator = s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR]
+            split_chance_func = definition[sd.SPLIT_CHANCE]
+            splits, accumulator = split_chance_func(ratio, accumulator, rng)
+    
+            s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR] = accumulator
+            for idx in range(splits):
+                s[sg.CONTINUATIONS].append(
+                    {
+                        sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
+                        sg.TREE_ROOT: s[sg.TREE_ROOT],
+                        sg.STEM_ROOT: s[sg.STEM_ROOT],
+                        sg.PARENT_SEGMENT: s,
+                        sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
+                        sg.IS_NEW_SPLIT: True,
+                    },
+                )
 
-        s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR] = accumulator
-        for idx in range(splits):
+    # Branch splits
+    if sd.CHILD_DEFINITION in definition:
+        age = s[sg.TREE_ROOT][sg.AGE]
+        ratio = (segments - rest_segments - 0.5) / segments  # We measure density at mid-segment.
+        branch_density_func = definition[sd.BRANCH_DENSITY]
+        branch_density = branch_density_func(age, ratio, rng)
+        for idx in range(math.floor(branch_density)):
             s[sg.CONTINUATIONS].append(
                 {
                     sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
                     sg.TREE_ROOT: s[sg.TREE_ROOT],
-                    sg.STEM_ROOT: s[sg.STEM_ROOT],
                     sg.PARENT_SEGMENT: s,
-                    sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
-                    sg.IS_NEW_SPLIT: True,
-                },
-            )
-
-        # Branch splits
-        if sd.CHILD_DEFINITION in definition and rng.random() <= 0.1:
-            s[sg.CONTINUATIONS].append(
-                {
-                    sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
-                    sg.TREE_ROOT: s[sg.TREE_ROOT],
-                    sg.PARENT_SEGMENT: s,
-                    sg.IS_NEW_BRANCH: True,
+                    sg.IS_NEW_BRANCH: (idx + 1) / branch_density,
                     sg.DEFINITION: s[sg.STEM_ROOT][sg.DEFINITION][sd.CHILD_DEFINITION],
                 },
             )
@@ -342,10 +424,10 @@ def expand(s):
     attach_node(s)
     split_curvature(s)
     length(s)
+    branch_curvature(s)
     radius(s)
     bending(s)
-    if s[sg.REST_SEGMENTS] > 0:
-        continuations(s)
+    continuations(s)
 
 
 def expand_fully(s):
