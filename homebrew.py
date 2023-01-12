@@ -102,6 +102,12 @@ def branch_density(ratio_func):
     return inner
 
 
+def branch_length_function(ratio_func):
+    def inner(age, ratio, rng):
+        return ratio_func(age, ratio, rng)
+    return inner
+    
+
 class StemType(enum.Enum):
     STEM = 1
     LEAF = 2
@@ -122,6 +128,8 @@ class StemDefinition(enum.Enum):
     SPLIT_ANGLE      =  6
     CHILD_DEFINITION =  7  # StemDefinition of the next level of branches
     BRANCH_DENSITY   =  8
+    BRANCH_ANGLE     =  9  # Pitch angle at which a branch splits off, uses branch point ratio along parent stem
+    BRANCH_ROTATION  = 10  # Heading for the same.
 
 
 class Segment(enum.Enum):
@@ -154,7 +162,8 @@ class Segment(enum.Enum):
     SPLIT_ACCUMULATOR  = 21  # Rounding error accumulator for splitting; Stored on the stem's root.
     # CLONE_BENDING_DEBT = 12  # Curvature from a split that needs to be compensated for
     # Branching
-    IS_NEW_BRANCH      = 22
+    IS_NEW_BRANCH      = 22  # FIXME: Is the ratio along the parent segment
+    BRANCH_RATIO       = 23  # Ratio along parent stem where the branch is attached
 
 
 sc = StemCurvature
@@ -171,8 +180,8 @@ BoringWillowish = {
     sd.BENDING: s_curvature(
         45,                # Lower curvature
         -60,               # Higher curvature
-        135,               # Curvature noisiness
-        135,               # Noisiness along the other axis
+        600,               # Curvature noisiness
+        600,               # Noisiness along the other axis
         linear(0.2, 1.0),  # Age-based magnitude of the overall effect
     ),
     sd.SPLIT_CHANCE: error_smoothing(constant(0.1)),
@@ -182,14 +191,15 @@ BoringWillowish = {
         10,
         linear(0.8, 1.0),
     ),
+    sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
     sd.CHILD_DEFINITION: {
         # sd.NAME: "Willowish Branch",
-        sd.SEGMENTS: 10,
-        sd.LENGTH: constant(4.0),
-        sd.RADIUS: constant(0.1),
+        sd.SEGMENTS: 5,
+        sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
+        sd.BRANCH_ANGLE: linear(90.0, 30.0),
+        sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
+        sd.RADIUS: constant(0.04),
         sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
-        sd.SPLIT_CHANCE: constant_splitting_func(0.0),
-        sd.SPLIT_ANGLE: constant(0.0),
     },
 }
 
@@ -207,10 +217,12 @@ BoringFirish = {
     ),
     sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
     sd.CHILD_DEFINITION: {
-        sd.NAME: "Firish Branch",
+        # sd.NAME: "Firish Branch",
         sd.SEGMENTS: 1,
-        sd.LENGTH: constant(1.0),
-        sd.RADIUS: constant(0.01),
+        sd.LENGTH: branch_length_function(linear(3.0, 1.0)),
+        sd.BRANCH_ANGLE: linear(90.0, 30.0),
+        sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
+        sd.RADIUS: constant(0.04),
         sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
     },
 }
@@ -230,8 +242,8 @@ BoringBoringish = {
 }
 
 
-#BoringTree = BoringWillowish
-BoringTree = BoringFirish
+BoringTree = BoringWillowish
+#BoringTree = BoringFirish
 #BoringTree = BoringBoringish
 
 
@@ -309,13 +321,17 @@ def length(s):
         s[sg.TREE_LENGTH] = length
         s[sg.STEM_LENGTH] = length
     elif sg.IS_NEW_BRANCH in s:
-        # A branch's length is determined in relation to its parent, but we're gonna cheat for now. FIXME
+        # A branch's length is determined in relation to its parent.
         age = s[sg.TREE_ROOT][sg.AGE]
         length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
         rng = s[sg.RNG]
+        parent_segments = s[sg.PARENT_SEGMENT][sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+        parent_offset = parent_segments - s[sg.PARENT_SEGMENT][sg.REST_SEGMENTS] + s[sg.IS_NEW_BRANCH] - 1
+        parent_ratio = parent_offset / parent_segments
 
-        length = length_func(age, 0, rng)
+        length = length_func(age, parent_ratio, rng)
         s[sg.STEM_LENGTH] = length
+        s[sg.BRANCH_RATIO] = parent_ratio
 
     # What is this stem's length per segment?
     segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
@@ -329,7 +345,11 @@ def length(s):
 
 def branch_curvature(s):
     if sg.IS_NEW_BRANCH in s:
-        s[sg.FOOT_NODE].set_p(-90)
+        age = s[sg.TREE_ROOT][sg.AGE]
+        rng = s[sg.RNG]
+        branch_ratio = s[sg.BRANCH_RATIO]
+        s[sg.FOOT_NODE].set_h(s[sg.DEFINITION][sd.BRANCH_ROTATION](age, branch_ratio, rng))
+        s[sg.FOOT_NODE].set_p(s[sg.DEFINITION][sd.BRANCH_ANGLE](age, branch_ratio, rng))
         s[sg.FOOT_NODE].set_z(s[sg.PARENT_SEGMENT][sg.LENGTH] * s[sg.IS_NEW_BRANCH])
 
 

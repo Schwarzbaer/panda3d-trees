@@ -29,6 +29,17 @@ gd = GeometryData
 
 
 def trimesh(stem, circle_segments=10, bark_tris=True):
+    segments = [stem]
+    current_vertex_count = 0
+
+    while segments:
+        s = segments.pop()
+        current_vertex_count += circle_segments
+        if sg.TREE_ROOT_NODE in s or sg.IS_NEW_BRANCH in s:        
+            current_vertex_count += circle_segments
+        segments += s[sg.CONTINUATIONS]
+        segments += s[sg.BRANCHES]
+
     # Set up the vertex arrays and associated stuff.
     vformat = GeomVertexFormat.getV3n3c4()
     vdata = GeomVertexData("Data", vformat, Geom.UHDynamic)
@@ -36,7 +47,7 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
     normal = GeomVertexWriter(vdata, 'normal')
     color = GeomVertexWriter(vdata, 'color')
     geom = Geom(vdata)
-    #geom.modify_vertex_data().set_num_rows(current_vertex_index + circle_segments)
+    geom.modify_vertex_data().set_num_rows(current_vertex_count)
     turtle = NodePath('turtle')
 
     # We'll be placing rings of vertices around the top of each segment,
@@ -114,6 +125,8 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
 
     # Now we go through all the segments again to connect the vertex
     # rings into meshes.
+    tris = GeomTriangles(Geom.UHStatic)
+
     segments = [stem]
     while segments:
         s = segments.pop()
@@ -132,11 +145,8 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
             v_br = parent_start_index + (i + 1) % circle_segments
 
             if bark_tris:
-                tris = GeomTriangles(Geom.UHStatic)
                 tris.addVertices(v_tl, v_bl, v_tr)
                 tris.addVertices(v_br, v_tr, v_bl)
-                tris.closePrimitive()
-                geom.addPrimitive(tris)
             else:
                 lines = GeomLines(Geom.UHStatic)
                 lines.addVertices(v_tl, v_bl)
@@ -148,6 +158,9 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
 
         segments += s[sg.CONTINUATIONS]
         segments += s[sg.BRANCHES]
+
+    tris.closePrimitive()
+    geom.addPrimitive(tris)
 
     # ...and now we pack it up all neat and tidy.
     node = GeomNode('geom_node')
