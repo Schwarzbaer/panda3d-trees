@@ -1,6 +1,7 @@
 import sys
 import random
 
+from panda3d.core import Vec3
 from panda3d.core import NodePath
 from panda3d.core import KeyboardButton
 from panda3d.core import PointLight
@@ -28,10 +29,12 @@ def replace_tree(tree_def=BoringTree, seed=None):
         sg.DEFINITION: BoringTree,
         sg.RNG_SEED: seed,
         sg.AGE: tree_age,
+        sg.HELIOTROPIC_DIRECTION: Vec3(0, 0, 1),
     }
     expand_fully(tree)
     tree_geom_node = geometry.trimesh(tree)
     tree_root = render.attach_new_node(tree_geom_node)
+    tree[sg.TREE_ROOT_NODE].reparent_to(tree_root)
     #import pdb; pdb.set_trace()
 
 

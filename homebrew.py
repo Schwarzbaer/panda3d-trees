@@ -130,40 +130,42 @@ class StemDefinition(enum.Enum):
     BRANCH_DENSITY   =  8
     BRANCH_ANGLE     =  9  # Pitch angle at which a branch splits off, uses branch point ratio along parent stem
     BRANCH_ROTATION  = 10  # Heading for the same.
+    HELIOTROPISM     = 11  # 
 
 
 class Segment(enum.Enum):
     # Administrative
-    RNG_SEED           =  1  # Seed for the random number generator.
-    RNG                =  2  # The random nnumber generator itself.
-    DEFINITION         =  3  # The StemDefinition for this stem.
+    RNG_SEED              =  1  # Seed for the random number generator.
+    RNG                   =  2  # The random nnumber generator itself.
+    DEFINITION            =  3  # The StemDefinition for this stem.
     # Parameters
-    AGE                =  4
+    AGE                   =  4
+    HELIOTROPIC_DIRECTION =  5
     # Segment hierarchy
-    TREE_ROOT          =  5  # The first segment of the tree.
-    STEM_ROOT          =  6  # The first segment of the stem.
-    CONTINUATIONS      =  7  # Segments that continue the stem.
-    BRANCHES           =  8
-    PARENT_SEGMENT     =  9  # The segment from which this one sprouts.
-    REST_SEGMENTS      = 10  # The number of segments left in the stem, inluding this one.
+    TREE_ROOT             =  6  # The first segment of the tree.
+    STEM_ROOT             =  7  # The first segment of the stem.
+    CONTINUATIONS         =  8  # Segments that continue the stem.
+    BRANCHES              =  9
+    PARENT_SEGMENT        = 10  # The segment from which this one sprouts.
+    REST_SEGMENTS         = 11  # The number of segments left in the stem, inluding this one.
     # Node hierarchy
-    TREE_ROOT_NODE     = 11  # The NodePath representing the tree's starting point.
-    FOOT_NODE          = 12
-    LENGTH_NODE        = 13  # A NodePath raise along a segment's length, in zero orientation
-    NODE               = 14  # The NodePath attached to the LENGTH_NODE, used solely for orientation
+    TREE_ROOT_NODE        = 12  # The NodePath representing the tree's starting point.
+    FOOT_NODE             = 13
+    LENGTH_NODE           = 14  # A NodePath raise along a segment's length, in zero orientation
+    NODE                  = 15  # The NodePath attached to the LENGTH_NODE, used solely for orientation
     # Geometry data
-    TREE_LENGTH        = 15
-    STEM_LENGTH        = 16
-    LENGTH             = 17  # Length of the segment
-    RADIUS             = 18  # The segment's radius ad the top.
-    ROOT_RADIUS        = 19  # Trunk radius at the root node (ratio = 0), present only on the TREE_ROOT
+    TREE_LENGTH           = 16
+    STEM_LENGTH           = 17
+    LENGTH                = 18  # Length of the segment
+    RADIUS                = 19  # The segment's radius ad the top.
+    ROOT_RADIUS           = 20  # Trunk radius at the root node (ratio = 0), present only on the TREE_ROOT
     # Stem splitting
-    IS_NEW_SPLIT       = 20  # Is this segment created through stem splitting?
-    SPLIT_ACCUMULATOR  = 21  # Rounding error accumulator for splitting; Stored on the stem's root.
-    # CLONE_BENDING_DEBT = 12  # Curvature from a split that needs to be compensated for
+    IS_NEW_SPLIT          = 21  # Is this segment created through stem splitting?
+    SPLIT_ACCUMULATOR     = 22  # Rounding error accumulator for splitting; Stored on the stem's root.
+    # CLONE_BENDING_DEBT  = 12  # Curvature from a split that needs to be compensated for
     # Branching
-    IS_NEW_BRANCH      = 22  # FIXME: Is the ratio along the parent segment
-    BRANCH_RATIO       = 23  # Ratio along parent stem where the branch is attached
+    IS_NEW_BRANCH         = 23  # FIXME: Is the ratio along the parent segment
+    BRANCH_RATIO          = 24  # Ratio along parent stem where the branch is attached
 
 
 sc = StemCurvature
@@ -192,6 +194,7 @@ BoringWillowish = {
         linear(0.8, 1.0),
     ),
     sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
+    sd.HELIOTROPISM: constant(0.0),
     sd.CHILD_DEFINITION: {
         # sd.NAME: "Willowish Branch",
         sd.SEGMENTS: 5,
@@ -200,6 +203,7 @@ BoringWillowish = {
         sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
         sd.RADIUS: constant(0.04),
         sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
+        sd.HELIOTROPISM: constant(100.0),
     },
 }
 
@@ -263,6 +267,7 @@ def set_up_rng(s):
 
 
 def hierarchy(s):
+    # On the tree's root, we need a NodePath that'll attach to the scene.
     if sg.TREE_ROOT not in s:
         s[sg.TREE_ROOT] = s
         s[sg.TREE_ROOT_NODE] = NodePath('tree_root')
@@ -303,11 +308,12 @@ def split_curvature(s):
         ratio = (segments - rest_segments) / segments
         rng = s[sg.RNG]
         split_angle_func = definition[sd.SPLIT_ANGLE]
+        node = s[sg.FOOT_NODE]
 
         split_angle = split_angle_func(age, ratio, rng)
 
-        s[sg.FOOT_NODE].set_p(-split_angle)
-        s[sg.FOOT_NODE].set_h(heading)
+        node.set_p(node.get_p() - split_angle)
+        node.set_h(node.get_h() + heading)
 
 
 def length(s):
@@ -424,6 +430,7 @@ def radius(s):
 
 
 def bending(s):
+    node = s[sg.NODE]
     age = s[sg.TREE_ROOT][sg.AGE]
     segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
     rest_segments = s[sg.REST_SEGMENTS]
@@ -433,11 +440,36 @@ def bending(s):
 
     pitch, roll = bending_func(age, ratio, rng)
 
-    s[sg.NODE].set_hpr(0, pitch / segments, roll / segments)
+    node.set_hpr(0, pitch / segments, roll / segments)
 
+
+#def design_tropism(s):
+#    s[sg.DESIGN_TROPISM] = 
+
+
+def heliotropism(s):
+    node = s[sg.NODE]
+    tree_root_node = s[sg.TREE_ROOT][sg.TREE_ROOT_NODE]
+    age = s[sg.TREE_ROOT][sg.AGE]
+    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+    rest_segments = s[sg.REST_SEGMENTS]
+    ratio = (segments - rest_segments) / segments
+    rng = s[sg.RNG]
+    heliotropic_weight_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.HELIOTROPISM]
+    global_heliotropic_direction = s[sg.TREE_ROOT][sg.HELIOTROPIC_DIRECTION]
+
+    local_heliotropic_direction = node.get_relative_vector(tree_root_node, global_heliotropic_direction)
+    heliotropic_weight = heliotropic_weight_func(age, ratio, rng)
+
+    m = base.loader.load_model("models/zup-axis")
+    m.reparent_to(node)
+    m.look_at(local_heliotropic_direction)
+    m.set_scale(0.1)
+    
 
 
 def expand(s):
+    # Debug
     print_definition_name(s)
     set_up_rng(s)
     hierarchy(s)
@@ -448,6 +480,9 @@ def expand(s):
     radius(s)
     bending(s)
     continuations(s)
+    # Tropisms
+    design_tropism(s)
+    heliotropism(s)
 
 
 def expand_fully(s):
