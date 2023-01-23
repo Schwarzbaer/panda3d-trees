@@ -206,7 +206,7 @@ BoringWillowish = {
         sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
         sd.RADIUS: constant(0.04),
         sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
-        sd.HELIOTROPISM: constant(100.0),
+        sd.HELIOTROPISM: constant(0.3),
     },
 }
 
@@ -356,9 +356,13 @@ def branch_curvature(s):
         age = s[sg.TREE_ROOT][sg.AGE]
         rng = s[sg.RNG]
         branch_ratio = s[sg.BRANCH_RATIO]
-        s[sg.FOOT_NODE].set_h(s[sg.DEFINITION][sd.BRANCH_ROTATION](age, branch_ratio, rng))
-        s[sg.FOOT_NODE].set_p(s[sg.DEFINITION][sd.BRANCH_ANGLE](age, branch_ratio, rng))
-        s[sg.FOOT_NODE].set_z(s[sg.PARENT_SEGMENT][sg.LENGTH] * s[sg.IS_NEW_BRANCH])
+        node = s[sg.FOOT_NODE]
+        branch_rotation_func = s[sg.DEFINITION][sd.BRANCH_ROTATION]
+        branch_angle_func = s[sg.DEFINITION][sd.BRANCH_ANGLE]
+
+        node.set_h(node.get_h() + branch_rotation_func(age, branch_ratio, rng))
+        node.set_p(node.get_p() + branch_angle_func(age, branch_ratio, rng))
+        node.set_z(node.get_z() + s[sg.PARENT_SEGMENT][sg.LENGTH] * s[sg.IS_NEW_BRANCH])
 
 
 def continuations(s):
@@ -442,7 +446,11 @@ def bending(s):
 
     pitch, roll = bending_func(age, ratio, rng)
 
-    node.set_hpr(0, pitch / segments, roll / segments)
+    node.set_hpr(
+        node.get_h() + 0,
+        node.get_p() + pitch / segments,
+        node.get_r() + roll / segments,
+    )
 
 
 def design_tropism(s):
@@ -469,11 +477,8 @@ def heliotropism(s):
     local_heliotropic_direction = node.get_relative_vector(tree_root_node, global_heliotropic_direction)
     heliotropic_weight = heliotropic_weight_func(age, ratio, rng)
 
-    m = base.loader.load_model("models/zup-axis")
-    m.reparent_to(node)
-    m.look_at(local_heliotropic_direction)
-    m.set_scale(0.1)
-    
+    s[sg.HELIOTROPISM] = local_heliotropic_direction * heliotropic_weight
+
 
 def apply_tropisms(s):
     foot_node = s[sg.FOOT_NODE]
@@ -481,7 +486,7 @@ def apply_tropisms(s):
     node = s[sg.NODE]
     length = s[sg.LENGTH]
 
-    total_tropism = s[sg.DESIGN_TROPISM]
+    total_tropism = s[sg.DESIGN_TROPISM] + s[sg.HELIOTROPISM]
     pitch_tropism = Vec3(0, total_tropism.y, total_tropism.z)
     pitch_angle = pitch_tropism.angle_deg(Vec3(0, 0, 1))
     if pitch_tropism.y > 0.0:
@@ -518,7 +523,7 @@ def expand(s, tropisms=True):
     # Tropisms
     if tropisms:
         design_tropism(s)
-        #heliotropism(s)
+        heliotropism(s)
         apply_tropisms(s)
 
 
