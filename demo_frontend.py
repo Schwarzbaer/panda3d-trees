@@ -47,9 +47,9 @@ def replace_tree(tree_def=BoringTree, seed=None):
     tree_geom_node_2 = geometry.trimesh(tree_2)
 
     tree_root_1 = render.attach_new_node(tree_geom_node_1)
-    tree_root_1.set_y(-4)
+    tree_root_1.set_x(-3)
     tree_root_2 = render.attach_new_node(tree_geom_node_2)
-    tree_root_2.set_y(4)
+    tree_root_2.set_x(3)
     #tree[sg.TREE_ROOT_NODE].reparent_to(tree_root)
     #import pdb; pdb.set_trace()
 
@@ -67,10 +67,15 @@ def move_camera(task):
         pitch += rot_speed * dt
     if base.mouseWatcherNode.is_button_down(KeyboardButton.ascii_key('w')):
         pitch -= rot_speed * dt
-    base.camera.set_h(base.camera.get_h() + turn)
-    old_pitch = base.camera.get_p()
-    new_pitch = max(min(old_pitch + pitch, 89.9), -89.9)
-    base.camera.set_p(new_pitch)
+
+    global tree_root_1
+    global tree_root_2
+    for node in [tree_root_1, tree_root_2]:
+        node.set_h(node.get_h() + turn)
+        old_pitch = node.get_p()
+        new_pitch = max(min(old_pitch + pitch, 89.9), -89.9)
+        node.set_p(new_pitch)
+
     return task.cont
 
 

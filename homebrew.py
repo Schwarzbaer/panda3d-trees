@@ -196,18 +196,18 @@ BoringWillowish = {
         10,
         linear(0.8, 1.0),
     ),
-    #sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
+    sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
     sd.HELIOTROPISM: constant(0.0),
-    #sd.CHILD_DEFINITION: {
-    #    # sd.NAME: "Willowish Branch",
-    #    sd.SEGMENTS: 5,
-    #    sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
-    #    sd.BRANCH_ANGLE: linear(90.0, 30.0),
-    #    sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
-    #    sd.RADIUS: constant(0.04),
-    #    sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
-    #    sd.HELIOTROPISM: constant(100.0),
-    #},
+    sd.CHILD_DEFINITION: {
+        # sd.NAME: "Willowish Branch",
+        sd.SEGMENTS: 5,
+        sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
+        sd.BRANCH_ANGLE: linear(90.0, 30.0),
+        sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
+        sd.RADIUS: constant(0.04),
+        sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
+        sd.HELIOTROPISM: constant(100.0),
+    },
 }
 
 BoringFirish = {
