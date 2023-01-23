@@ -130,7 +130,7 @@ class StemDefinition(enum.Enum):
     BRANCH_DENSITY   =  8
     BRANCH_ANGLE     =  9  # Pitch angle at which a branch splits off, uses branch point ratio along parent stem
     BRANCH_ROTATION  = 10  # Heading for the same.
-    HELIOTROPISM     = 11  # 
+    HELIOTROPISM     = 11
 
 
 class Segment(enum.Enum):
@@ -166,6 +166,9 @@ class Segment(enum.Enum):
     # Branching
     IS_NEW_BRANCH         = 23  # FIXME: Is the ratio along the parent segment
     BRANCH_RATIO          = 24  # Ratio along parent stem where the branch is attached
+    # Tropism
+    DESIGN_TROPISM        = 25
+    HELIOTROPISM          = 26  # 
 
 
 sc = StemCurvature
@@ -193,18 +196,18 @@ BoringWillowish = {
         10,
         linear(0.8, 1.0),
     ),
-    sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
+    #sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
     sd.HELIOTROPISM: constant(0.0),
-    sd.CHILD_DEFINITION: {
-        # sd.NAME: "Willowish Branch",
-        sd.SEGMENTS: 5,
-        sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
-        sd.BRANCH_ANGLE: linear(90.0, 30.0),
-        sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
-        sd.RADIUS: constant(0.04),
-        sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
-        sd.HELIOTROPISM: constant(100.0),
-    },
+    #sd.CHILD_DEFINITION: {
+    #    # sd.NAME: "Willowish Branch",
+    #    sd.SEGMENTS: 5,
+    #    sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
+    #    sd.BRANCH_ANGLE: linear(90.0, 30.0),
+    #    sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
+    #    sd.RADIUS: constant(0.04),
+    #    sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
+    #    sd.HELIOTROPISM: constant(100.0),
+    #},
 }
 
 BoringFirish = {
@@ -262,8 +265,7 @@ def print_definition_name(s):
 def set_up_rng(s):
     if sg.RNG_SEED not in s:
         s[sg.RNG_SEED] = 0
-    if sg.RNG not in s:
-        s[sg.RNG] = random.Random(s[sg.RNG_SEED])
+    s[sg.RNG] = random.Random(s[sg.RNG_SEED])
 
 
 def hierarchy(s):
@@ -430,7 +432,7 @@ def radius(s):
 
 
 def bending(s):
-    node = s[sg.NODE]
+    node = s[sg.FOOT_NODE]
     age = s[sg.TREE_ROOT][sg.AGE]
     segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
     rest_segments = s[sg.REST_SEGMENTS]
@@ -443,8 +445,14 @@ def bending(s):
     node.set_hpr(0, pitch / segments, roll / segments)
 
 
-#def design_tropism(s):
-#    s[sg.DESIGN_TROPISM] = 
+def design_tropism(s):
+    node = s[sg.NODE]
+    if sg.TREE_ROOT_NODE in s:
+        parent_node = s[sg.TREE_ROOT_NODE]
+    else:
+        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
+
+    s[sg.DESIGN_TROPISM] = parent_node.get_relative_vector(node, up)
 
 
 def heliotropism(s):
@@ -467,8 +475,35 @@ def heliotropism(s):
     m.set_scale(0.1)
     
 
+def apply_tropisms(s):
+    foot_node = s[sg.FOOT_NODE]
+    length_node = s[sg.LENGTH_NODE]
+    node = s[sg.NODE]
+    length = s[sg.LENGTH]
 
-def expand(s):
+    total_tropism = s[sg.DESIGN_TROPISM]
+    pitch_tropism = Vec3(0, total_tropism.y, total_tropism.z)
+    pitch_angle = pitch_tropism.angle_deg(Vec3(0, 0, 1))
+    if pitch_tropism.y > 0.0:
+        pitch_angle *= -1
+    roll_angle = pitch_tropism.angle_deg(total_tropism)
+    if total_tropism.x < 0.0:
+        roll_angle *= -1
+
+    foot_node.set_pos(0, 0, 0)
+    foot_node.set_hpr(0, 0, 0)
+    length_node.set_pos(0, 0, 0)
+    length_node.set_hpr(0, 0, 0)
+    node.set_pos(0, 0, 0)
+    node.set_hpr(0, 0, 0)
+
+    foot_node.set_p(pitch_angle)
+    foot_node.set_r(roll_angle)
+    #foot_node.set_h(foot_node, -heading_angle)
+    length_node.set_z(length)
+
+
+def expand(s, tropisms=True):
     # Debug
     print_definition_name(s)
     set_up_rng(s)
@@ -481,17 +516,19 @@ def expand(s):
     bending(s)
     continuations(s)
     # Tropisms
-    design_tropism(s)
-    heliotropism(s)
+    if tropisms:
+        design_tropism(s)
+        #heliotropism(s)
+        apply_tropisms(s)
 
 
-def expand_fully(s):
-    sheets = [s]
-    while sheets:
-        sheet = sheets.pop()
-        expand(sheet)
-        sheets += sheet[sg.CONTINUATIONS]
-        sheets += sheet[sg.BRANCHES]
+def expand_fully(s, tropisms=True):
+    segments = [s]
+    while segments:
+        segment = segments.pop()
+        expand(segment, tropisms=tropisms)
+        segments += segment[sg.CONTINUATIONS]
+        segments += segment[sg.BRANCHES]
 
 
 ###

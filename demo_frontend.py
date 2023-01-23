@@ -20,21 +20,37 @@ def replace_tree(tree_def=BoringTree, seed=None):
     if seed is None:
         seed = random.random()
 
-    global tree_root
+    global tree_root_1
+    global tree_root_2
     global tree_age
-    tree_root.remove_node()
+    tree_root_1.remove_node()
+    tree_root_2.remove_node()
 
     rng = random.Random(seed)
-    tree = {
+
+    tree_1 = {
         sg.DEFINITION: BoringTree,
         sg.RNG_SEED: seed,
         sg.AGE: tree_age,
         sg.HELIOTROPIC_DIRECTION: Vec3(0, 0, 1),
     }
-    expand_fully(tree)
-    tree_geom_node = geometry.trimesh(tree)
-    tree_root = render.attach_new_node(tree_geom_node)
-    tree[sg.TREE_ROOT_NODE].reparent_to(tree_root)
+    expand_fully(tree_1, tropisms=False)
+    tree_geom_node_1 = geometry.trimesh(tree_1)
+
+    tree_2 = {
+        sg.DEFINITION: BoringTree,
+        sg.RNG_SEED: seed,
+        sg.AGE: tree_age,
+        sg.HELIOTROPIC_DIRECTION: Vec3(0, 0, 1),
+    }
+    expand_fully(tree_2, tropisms=True)
+    tree_geom_node_2 = geometry.trimesh(tree_2)
+
+    tree_root_1 = render.attach_new_node(tree_geom_node_1)
+    tree_root_1.set_y(-4)
+    tree_root_2 = render.attach_new_node(tree_geom_node_2)
+    tree_root_2.set_y(4)
+    #tree[sg.TREE_ROOT_NODE].reparent_to(tree_root)
     #import pdb; pdb.set_trace()
 
 
@@ -69,10 +85,12 @@ def change_tree_age(delta):
 ShowBase()
 
 
-global tree_root
+global tree_root_1
+global tree_root_2
 global tree_age
 global text_age
-tree_root = render.attach_new_node('empty')
+tree_root_1 = render.attach_new_node('empty')
+tree_root_2 = render.attach_new_node('empty')
 tree_age = 1.0
 text_age = OnscreenText(text=str(tree_age), pos=(-0.9, 0.9), scale=0.07)
 
