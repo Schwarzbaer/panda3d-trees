@@ -198,16 +198,16 @@ BoringWillowish = {
     ),
     sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
     sd.HELIOTROPISM: constant(0.0),
-    sd.CHILD_DEFINITION: {
-        # sd.NAME: "Willowish Branch",
-        sd.SEGMENTS: 5,
-        sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
-        sd.BRANCH_ANGLE: linear(90.0, 30.0),
-        sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
-        sd.RADIUS: constant(0.04),
-        sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
-        sd.HELIOTROPISM: constant(0.3),
-    },
+    # sd.CHILD_DEFINITION: {
+    #     # sd.NAME: "Willowish Branch",
+    #     sd.SEGMENTS: 5,
+    #     sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
+    #     sd.BRANCH_ANGLE: linear(90.0, 30.0),
+    #     sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
+    #     sd.RADIUS: constant(0.04),
+    #     sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
+    #     sd.HELIOTROPISM: constant(0.3),
+    # },
 }
 
 BoringFirish = {
@@ -284,87 +284,6 @@ def hierarchy(s):
     s[sg.BRANCHES] = []
 
 
-def attach_node(s):
-    if sg.TREE_ROOT_NODE in s:  # Root of the tree
-        parent_node = s[sg.TREE_ROOT_NODE]
-    elif sg.IS_NEW_BRANCH in s:  # Root of the branch
-        parent_node = s[sg.PARENT_SEGMENT][sg.FOOT_NODE]
-    else:
-        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
-    foot_node = parent_node.attach_new_node('tree_segment foot')
-    length_node = foot_node.attach_new_node('tree_segment length')
-    node = length_node.attach_new_node('tree_segment orientation')
-    s[sg.FOOT_NODE] = foot_node
-    s[sg.LENGTH_NODE] = length_node
-    s[sg.NODE] = node
-
-
-def split_curvature(s):
-    if sg.IS_NEW_SPLIT in s:
-        heading = s[sg.RNG].uniform(-1, 1) * 180.0
-
-        definition = s[sg.STEM_ROOT][sg.DEFINITION]
-        age = s[sg.TREE_ROOT][sg.AGE]
-        segments = definition[sd.SEGMENTS]
-        rest_segments = s[sg.REST_SEGMENTS]
-        ratio = (segments - rest_segments) / segments
-        rng = s[sg.RNG]
-        split_angle_func = definition[sd.SPLIT_ANGLE]
-        node = s[sg.FOOT_NODE]
-
-        split_angle = split_angle_func(age, ratio, rng)
-
-        node.set_p(node.get_p() - split_angle)
-        node.set_h(node.get_h() + heading)
-
-
-def length(s):
-    if sg.TREE_ROOT_NODE in s:
-        # On the tree's root, the tree's overall length is determined on the tree root.
-        age = s[sg.TREE_ROOT][sg.AGE]
-        length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
-        rng = s[sg.RNG]
-
-        length = length_func(age, 0, rng)
-        s[sg.TREE_LENGTH] = length
-        s[sg.STEM_LENGTH] = length
-    elif sg.IS_NEW_BRANCH in s:
-        # A branch's length is determined in relation to its parent.
-        age = s[sg.TREE_ROOT][sg.AGE]
-        length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
-        rng = s[sg.RNG]
-        parent_segments = s[sg.PARENT_SEGMENT][sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
-        parent_offset = parent_segments - s[sg.PARENT_SEGMENT][sg.REST_SEGMENTS] + s[sg.IS_NEW_BRANCH] - 1
-        parent_ratio = parent_offset / parent_segments
-
-        length = length_func(age, parent_ratio, rng)
-        s[sg.STEM_LENGTH] = length
-        s[sg.BRANCH_RATIO] = parent_ratio
-
-    # What is this stem's length per segment?
-    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
-    stem_length = s[sg.STEM_ROOT][sg.STEM_LENGTH]
-    segment_legth = stem_length / segments
-
-    node = s[sg.LENGTH_NODE]
-    node.set_z(segment_legth)
-    s[sg.LENGTH] = segment_legth
-
-
-def branch_curvature(s):
-    if sg.IS_NEW_BRANCH in s:
-        age = s[sg.TREE_ROOT][sg.AGE]
-        rng = s[sg.RNG]
-        branch_ratio = s[sg.BRANCH_RATIO]
-        node = s[sg.FOOT_NODE]
-        branch_rotation_func = s[sg.DEFINITION][sd.BRANCH_ROTATION]
-        branch_angle_func = s[sg.DEFINITION][sd.BRANCH_ANGLE]
-
-        node.set_h(node.get_h() + branch_rotation_func(age, branch_ratio, rng))
-        node.set_p(node.get_p() + branch_angle_func(age, branch_ratio, rng))
-        node.set_z(node.get_z() + s[sg.PARENT_SEGMENT][sg.LENGTH] * s[sg.IS_NEW_BRANCH])
-
-
 def continuations(s):
     definition = s[sg.STEM_ROOT][sg.DEFINITION]
     segments = definition[sd.SEGMENTS]
@@ -421,6 +340,37 @@ def continuations(s):
             )
 
 
+def length(s):
+    if sg.TREE_ROOT_NODE in s:
+        # On the tree's root, the tree's overall length is determined on the tree root.
+        age = s[sg.TREE_ROOT][sg.AGE]
+        length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
+        rng = s[sg.RNG]
+
+        length = length_func(age, 0, rng)
+        s[sg.TREE_LENGTH] = length
+        s[sg.STEM_LENGTH] = length
+    elif sg.IS_NEW_BRANCH in s:
+        # A branch's length is determined in relation to its parent.
+        age = s[sg.TREE_ROOT][sg.AGE]
+        length_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.LENGTH]
+        rng = s[sg.RNG]
+        parent_segments = s[sg.PARENT_SEGMENT][sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+        parent_offset = parent_segments - s[sg.PARENT_SEGMENT][sg.REST_SEGMENTS] + s[sg.IS_NEW_BRANCH] - 1
+        parent_ratio = parent_offset / parent_segments
+
+        length = length_func(age, parent_ratio, rng)
+        s[sg.STEM_LENGTH] = length
+        s[sg.BRANCH_RATIO] = parent_ratio
+
+    # What is this stem's length per segment?
+    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+    stem_length = s[sg.STEM_ROOT][sg.STEM_LENGTH]
+    segment_legth = stem_length / segments
+
+    s[sg.LENGTH] = segment_legth
+
+
 def radius(s):
     age = s[sg.TREE_ROOT][sg.AGE]
     segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
@@ -433,6 +383,54 @@ def radius(s):
         s[sg.ROOT_RADIUS] = radius_func(age, 0, rng)
 
     s[sg.RADIUS] = radius_func(age, ratio, rng)
+
+
+def attach_node(s):
+    if sg.TREE_ROOT_NODE in s:  # Root of the tree
+        parent_node = s[sg.TREE_ROOT_NODE]
+    elif sg.IS_NEW_BRANCH in s:  # Root of the branch
+        parent_node = s[sg.PARENT_SEGMENT][sg.FOOT_NODE]
+    else:
+        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
+    foot_node = parent_node.attach_new_node('tree_segment foot')
+    length_node = foot_node.attach_new_node('tree_segment length')
+    node = length_node.attach_new_node('tree_segment orientation')
+    s[sg.FOOT_NODE] = foot_node
+    s[sg.LENGTH_NODE] = length_node
+    s[sg.NODE] = node
+
+
+def split_curvature(s):
+    if sg.IS_NEW_SPLIT in s:
+        heading = s[sg.RNG].uniform(-1, 1) * 180.0
+
+        definition = s[sg.STEM_ROOT][sg.DEFINITION]
+        age = s[sg.TREE_ROOT][sg.AGE]
+        segments = definition[sd.SEGMENTS]
+        rest_segments = s[sg.REST_SEGMENTS]
+        ratio = (segments - rest_segments) / segments
+        rng = s[sg.RNG]
+        split_angle_func = definition[sd.SPLIT_ANGLE]
+        node = s[sg.FOOT_NODE]
+
+        split_angle = split_angle_func(age, ratio, rng)
+
+        node.set_p(node.get_p() - split_angle)
+        node.set_h(node.get_h() + heading)
+
+
+def branch_curvature(s):
+    if sg.IS_NEW_BRANCH in s:
+        age = s[sg.TREE_ROOT][sg.AGE]
+        rng = s[sg.RNG]
+        branch_ratio = s[sg.BRANCH_RATIO]
+        node = s[sg.FOOT_NODE]
+        branch_rotation_func = s[sg.DEFINITION][sd.BRANCH_ROTATION]
+        branch_angle_func = s[sg.DEFINITION][sd.BRANCH_ANGLE]
+
+        node.set_h(node.get_h() + branch_rotation_func(age, branch_ratio, rng))
+        node.set_p(node.get_p() + branch_angle_func(age, branch_ratio, rng))
+        node.set_z(node.get_z() + s[sg.PARENT_SEGMENT][sg.LENGTH] * s[sg.IS_NEW_BRANCH])
 
 
 def bending(s):
@@ -511,20 +509,25 @@ def apply_tropisms(s):
 def expand(s, tropisms=True):
     # Debug
     print_definition_name(s)
+    # Segment logistics
     set_up_rng(s)
     hierarchy(s)
+    continuations(s)
+    # Segment visualization
+    length(s)
+    radius(s)
+    # Design
     attach_node(s)
     split_curvature(s)
-    length(s)
     branch_curvature(s)
-    radius(s)
     bending(s)
-    continuations(s)
     # Tropisms
     if tropisms:
         design_tropism(s)
         heliotropism(s)
         apply_tropisms(s)
+    else:
+        s[sg.LENGTH_NODE].set_z(s[sg.LENGTH])
 
 
 def expand_fully(s, tropisms=True):
