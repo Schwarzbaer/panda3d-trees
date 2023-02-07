@@ -47,9 +47,9 @@ def replace_tree(tree_def=BoringTree, seed=None):
     tree_geom_node_2 = geometry.trimesh(tree_2)
 
     tree_root_1 = render.attach_new_node(tree_geom_node_1)
-    tree_root_1.set_x(-3)
+    tree_root_1.set_x(-4)
     tree_root_2 = render.attach_new_node(tree_geom_node_2)
-    tree_root_2.set_x(3)
+    tree_root_2.set_x(4)
     #tree[sg.TREE_ROOT_NODE].reparent_to(tree_root)
     #import pdb; pdb.set_trace()
 

@@ -38,19 +38,20 @@ def func_curvature(pitch_func, curve_func):
     return inner
 
 
-def s_curvature(lower_curve, higher_curve, variation, crumple, age_ratio):
+def s_curvature(lower_curve, higher_curve, variation, crumple, twist, age_ratio):
     def inner(age, ratio, rng):
+        twist_angle = twist(age, ratio, rng)
+
         if ratio <= 0.5:
             curve = lower_curve
         else:
             curve = higher_curve
         curve += rng.uniform(-1, 1) * variation
+        curve *= age_ratio(age, ratio, rng)
 
         pitch = rng.uniform(-1, 1) * crumple
-
         pitch *= age_ratio(age, ratio, rng)
-        curve *= age_ratio(age, ratio, rng)
-        return (pitch, curve)
+        return (twist_angle, pitch, curve)
     return inner
 
 
@@ -136,7 +137,7 @@ class StemDefinition(enum.Enum):
 class Segment(enum.Enum):
     # Administrative
     RNG_SEED              =  1  # Seed for the random number generator.
-    RNG                   =  2  # The random nnumber generator itself.
+    RNG                   =  2  # The random number generator itself.
     DEFINITION            =  3  # The StemDefinition for this stem.
     # Parameters
     AGE                   =  4
@@ -168,7 +169,8 @@ class Segment(enum.Enum):
     BRANCH_RATIO          = 24  # Ratio along parent stem where the branch is attached
     # Tropism
     DESIGN_TROPISM        = 25
-    HELIOTROPISM          = 26  # 
+    DESIGN_TWIST          = 26
+    HELIOTROPISM          = 27  # 
 
 
 sc = StemCurvature
@@ -187,6 +189,7 @@ BoringWillowish = {
         -60,               # Higher curvature
         600,               # Curvature noisiness
         600,               # Noisiness along the other axis
+        constant(0.0),     # Twist
         linear(0.2, 1.0),  # Age-based magnitude of the overall effect
     ),
     sd.SPLIT_CHANCE: error_smoothing(constant(0.1)),
@@ -220,6 +223,7 @@ BoringFirish = {
         0,                 # Higher curvature
         10,                # Curvature noisiness
         10,                # Noisiness along the other axis
+        constant(0.0),     # Twist
         linear(0.2, 1.0),  # Age-based magnitude of the overall effect
     ),
     sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
@@ -244,6 +248,7 @@ BoringBoringish = {
         0,                 # Higher curvature
         0,                 # Curvature noisiness
         0,                 # Noisiness along the other axis
+        constant(0.0),     # Twist
         linear(0.2, 1.0),  # Age-based magnitude of the overall effect
     ),
 }
@@ -442,27 +447,31 @@ def bending(s):
     ratio = (segments - rest_segments) / segments
     rng = s[sg.RNG]
 
-    pitch, roll = bending_func(age, ratio, rng)
+    heading, pitch, roll = bending_func(age, ratio, rng)
 
     node.set_hpr(
-        node.get_h() + 0,
+        node.get_h() + heading / segments,
         node.get_p() + pitch / segments,
         node.get_r() + roll / segments,
     )
 
 
 def design_tropism(s):
-    node = s[sg.NODE]
+    node = s[sg.FOOT_NODE]
     if sg.TREE_ROOT_NODE in s:
         parent_node = s[sg.TREE_ROOT_NODE]
     else:
         parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
 
+    s[sg.DESIGN_TWIST] = node.get_h()
     s[sg.DESIGN_TROPISM] = parent_node.get_relative_vector(node, up)
 
 
 def heliotropism(s):
-    node = s[sg.NODE]
+    if sg.TREE_ROOT_NODE in s:
+        parent_node = s[sg.TREE_ROOT_NODE]
+    else:
+        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
     tree_root_node = s[sg.TREE_ROOT][sg.TREE_ROOT_NODE]
     age = s[sg.TREE_ROOT][sg.AGE]
     segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
@@ -472,26 +481,21 @@ def heliotropism(s):
     heliotropic_weight_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.HELIOTROPISM]
     global_heliotropic_direction = s[sg.TREE_ROOT][sg.HELIOTROPIC_DIRECTION]
 
-    local_heliotropic_direction = node.get_relative_vector(tree_root_node, global_heliotropic_direction)
+    local_heliotropic_direction = parent_node.get_relative_vector(tree_root_node, global_heliotropic_direction)
     heliotropic_weight = heliotropic_weight_func(age, ratio, rng)
 
     s[sg.HELIOTROPISM] = local_heliotropic_direction * heliotropic_weight
 
 
 def apply_tropisms(s):
+    if sg.TREE_ROOT_NODE in s:
+        parent_node = s[sg.TREE_ROOT_NODE]
+    else:
+        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
     foot_node = s[sg.FOOT_NODE]
     length_node = s[sg.LENGTH_NODE]
     node = s[sg.NODE]
     length = s[sg.LENGTH]
-
-    total_tropism = s[sg.DESIGN_TROPISM] + s[sg.HELIOTROPISM]
-    pitch_tropism = Vec3(0, total_tropism.y, total_tropism.z)
-    pitch_angle = pitch_tropism.angle_deg(Vec3(0, 0, 1))
-    if pitch_tropism.y > 0.0:
-        pitch_angle *= -1
-    roll_angle = pitch_tropism.angle_deg(total_tropism)
-    if total_tropism.x < 0.0:
-        roll_angle *= -1
 
     foot_node.set_pos(0, 0, 0)
     foot_node.set_hpr(0, 0, 0)
@@ -500,9 +504,22 @@ def apply_tropisms(s):
     node.set_pos(0, 0, 0)
     node.set_hpr(0, 0, 0)
 
+    design_twist = s[sg.DESIGN_TWIST]
+    foot_node.set_h(design_twist)
+
+    total_tropism = s[sg.DESIGN_TROPISM] + s[sg.HELIOTROPISM]
+    total_tropism = foot_node.get_relative_vector(parent_node, total_tropism)
+    pitch_tropism = Vec3(0, total_tropism.y, total_tropism.z)
+    pitch_angle = pitch_tropism.angle_deg(Vec3(0, 0, 1))
+    if pitch_tropism.y > 0.0:
+        pitch_angle *= -1
+    roll_angle = pitch_tropism.angle_deg(total_tropism)
+    if total_tropism.x < 0.0:
+        roll_angle *= -1
+
+
     foot_node.set_p(pitch_angle)
     foot_node.set_r(roll_angle)
-    #foot_node.set_h(foot_node, -heading_angle)
     length_node.set_z(length)
 
 
