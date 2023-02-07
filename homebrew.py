@@ -32,9 +32,13 @@ def boring_radius(v_from, v_to):
     return inner
 
 
-def func_curvature(pitch_func, curve_func):
+def func_curvature(twist_func, pitch_func, curve_func):
     def inner(age, ratio, rng):
-        return (pitch_func(age, ratio, rng), curve_func(age, ratio, rng))
+        return (
+            twist_func(age, ratio, rng),
+            pitch_func(age, ratio, rng),
+            curve_func(age, ratio, rng),
+        )
     return inner
 
 
@@ -151,8 +155,6 @@ class Segment(enum.Enum):
     REST_SEGMENTS         = 11  # The number of segments left in the stem, inluding this one.
     # Node hierarchy
     TREE_ROOT_NODE        = 12  # The NodePath representing the tree's starting point.
-    FOOT_NODE             = 13
-    LENGTH_NODE           = 14  # A NodePath raise along a segment's length, in zero orientation
     NODE                  = 15  # The NodePath attached to the LENGTH_NODE, used solely for orientation
     # Geometry data
     TREE_LENGTH           = 16
@@ -180,7 +182,7 @@ sg = Segment
 
 # FIXME: Move to species definitions file
 BoringWillowish = {
-    # sd.NAME: "Willowish Trunk",
+    sd.NAME: "Willowish Trunk",
     sd.SEGMENTS: 10,
     sd.LENGTH: noisy_linear_length(1, 8, 0),
     sd.RADIUS: boring_radius(0.5, 0.1),
@@ -201,16 +203,16 @@ BoringWillowish = {
     ),
     sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
     sd.HELIOTROPISM: constant(0.0),
-    # sd.CHILD_DEFINITION: {
-    #     # sd.NAME: "Willowish Branch",
-    #     sd.SEGMENTS: 5,
-    #     sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
-    #     sd.BRANCH_ANGLE: linear(90.0, 30.0),
-    #     sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
-    #     sd.RADIUS: constant(0.04),
-    #     sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
-    #     sd.HELIOTROPISM: constant(0.3),
-    # },
+    sd.CHILD_DEFINITION: {
+        sd.NAME: "Willowish Branch",
+        sd.SEGMENTS: 5,
+        sd.LENGTH: branch_length_function(linear(2.0, 3.0)),
+        sd.BRANCH_ANGLE: linear(90.0, 30.0),
+        sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
+        sd.RADIUS: constant(0.04),
+        sd.BENDING: func_curvature(constant(0.0), constant(0.0), constant(0.0)),
+        sd.HELIOTROPISM: constant(0.3),
+    },
 }
 
 BoringFirish = {
@@ -234,7 +236,7 @@ BoringFirish = {
         sd.BRANCH_ANGLE: linear(90.0, 30.0),
         sd.BRANCH_ROTATION: noisy_linear_length(0.0, 0.0, 180.0),
         sd.RADIUS: constant(0.04),
-        sd.BENDING: func_curvature(constant(0.0), constant(0.0)),
+        sd.BENDING: func_curvature(constant(0.0), constant(0.0), constant(0.0)),
     },
 }
 
@@ -394,14 +396,12 @@ def attach_node(s):
     if sg.TREE_ROOT_NODE in s:  # Root of the tree
         parent_node = s[sg.TREE_ROOT_NODE]
     elif sg.IS_NEW_BRANCH in s:  # Root of the branch
-        parent_node = s[sg.PARENT_SEGMENT][sg.FOOT_NODE]
+        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
     else:
         parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
-    foot_node = parent_node.attach_new_node('tree_segment foot')
-    length_node = foot_node.attach_new_node('tree_segment length')
-    node = length_node.attach_new_node('tree_segment orientation')
-    s[sg.FOOT_NODE] = foot_node
-    s[sg.LENGTH_NODE] = length_node
+
+    node = parent_node.attach_new_node('tree_segment orientation')
+
     s[sg.NODE] = node
 
 
@@ -416,7 +416,7 @@ def split_curvature(s):
         ratio = (segments - rest_segments) / segments
         rng = s[sg.RNG]
         split_angle_func = definition[sd.SPLIT_ANGLE]
-        node = s[sg.FOOT_NODE]
+        node = s[sg.NODE]
 
         split_angle = split_angle_func(age, ratio, rng)
 
@@ -429,17 +429,23 @@ def branch_curvature(s):
         age = s[sg.TREE_ROOT][sg.AGE]
         rng = s[sg.RNG]
         branch_ratio = s[sg.BRANCH_RATIO]
-        node = s[sg.FOOT_NODE]
         branch_rotation_func = s[sg.DEFINITION][sd.BRANCH_ROTATION]
         branch_angle_func = s[sg.DEFINITION][sd.BRANCH_ANGLE]
+        node = s[sg.NODE]
+        parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
 
         node.set_h(node.get_h() + branch_rotation_func(age, branch_ratio, rng))
         node.set_p(node.get_p() + branch_angle_func(age, branch_ratio, rng))
-        node.set_z(node.get_z() + s[sg.PARENT_SEGMENT][sg.LENGTH] * s[sg.IS_NEW_BRANCH])
+        node.set_pos(
+            parent_node,
+            0,
+            0,
+            -s[sg.PARENT_SEGMENT][sg.LENGTH] * (1.0 - s[sg.IS_NEW_BRANCH]),
+        )
 
 
 def bending(s):
-    node = s[sg.FOOT_NODE]
+    node = s[sg.NODE]
     age = s[sg.TREE_ROOT][sg.AGE]
     segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
     rest_segments = s[sg.REST_SEGMENTS]
@@ -457,7 +463,7 @@ def bending(s):
 
 
 def design_tropism(s):
-    node = s[sg.FOOT_NODE]
+    node = s[sg.NODE]
     if sg.TREE_ROOT_NODE in s:
         parent_node = s[sg.TREE_ROOT_NODE]
     else:
@@ -492,23 +498,17 @@ def apply_tropisms(s):
         parent_node = s[sg.TREE_ROOT_NODE]
     else:
         parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
-    foot_node = s[sg.FOOT_NODE]
-    length_node = s[sg.LENGTH_NODE]
     node = s[sg.NODE]
     length = s[sg.LENGTH]
 
-    foot_node.set_pos(0, 0, 0)
-    foot_node.set_hpr(0, 0, 0)
-    length_node.set_pos(0, 0, 0)
-    length_node.set_hpr(0, 0, 0)
     node.set_pos(0, 0, 0)
     node.set_hpr(0, 0, 0)
 
     design_twist = s[sg.DESIGN_TWIST]
-    foot_node.set_h(design_twist)
+    node.set_h(design_twist)
 
     total_tropism = s[sg.DESIGN_TROPISM] + s[sg.HELIOTROPISM]
-    total_tropism = foot_node.get_relative_vector(parent_node, total_tropism)
+    total_tropism = node.get_relative_vector(parent_node, total_tropism)
     pitch_tropism = Vec3(0, total_tropism.y, total_tropism.z)
     pitch_angle = pitch_tropism.angle_deg(Vec3(0, 0, 1))
     if pitch_tropism.y > 0.0:
@@ -517,10 +517,17 @@ def apply_tropisms(s):
     if total_tropism.x < 0.0:
         roll_angle *= -1
 
-
-    foot_node.set_p(pitch_angle)
-    foot_node.set_r(roll_angle)
-    length_node.set_z(length)
+    node.set_p(pitch_angle)
+    node.set_r(roll_angle)
+    if sg.IS_NEW_BRANCH in s:
+        node.set_pos(
+            parent_node,
+            0,
+            0,
+            -s[sg.PARENT_SEGMENT][sg.LENGTH] * (1.0 - s[sg.IS_NEW_BRANCH]),
+        )
+    else:
+        node.set_z(node, length)
 
 
 def expand(s, tropisms=True):
@@ -543,8 +550,8 @@ def expand(s, tropisms=True):
         design_tropism(s)
         heliotropism(s)
         apply_tropisms(s)
-    else:
-        s[sg.LENGTH_NODE].set_z(s[sg.LENGTH])
+    elif sg.IS_NEW_BRANCH not in s:
+        s[sg.NODE].set_z(s[sg.NODE], s[sg.LENGTH])
 
 
 def expand_fully(s, tropisms=True):

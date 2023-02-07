@@ -99,7 +99,7 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
         # Untwisting
         if sg.TREE_ROOT_NODE not in s and sg.IS_NEW_BRANCH not in s:
             parent_twist = s[sg.PARENT_SEGMENT][gd.TWIST_ANGLE]
-            own_twist = s[sg.FOOT_NODE].get_h()
+            own_twist = s[sg.NODE].get_h()
             s[gd.TWIST_ANGLE] = parent_twist + own_twist
         else:
             s[gd.TWIST_ANGLE] = 0
@@ -109,7 +109,7 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
             if sg.TREE_ROOT_NODE in s:
                 circle_node = sg.TREE_ROOT_NODE
             else:
-                circle_node = sg.FOOT_NODE
+                circle_node = sg.NODE
             draw_vertex_circle(s, circle_segments, circle_node)
             s[gd.FOOT_RING_START_VERTEX] = current_vertex_index
             current_vertex_index += circle_segments
