@@ -11,7 +11,7 @@ from direct.showbase.ShowBase import ShowBase
 from direct.gui.OnscreenText import OnscreenText
 
 from tree_specs import Segment as sg
-from tree_species import boringBoringish as BoringTree
+from tree_species import BoringBoringish as BoringTree
 from homebrew import expand_fully
 import geometry
 

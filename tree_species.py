@@ -1,3 +1,16 @@
+from tree_specs import StemDefinition as sd
+from blending_functions import noisy_linear_length
+from blending_functions import boring_radius
+from blending_functions import s_curvature
+from blending_functions import constant
+from blending_functions import linear
+from blending_functions import error_smoothing
+from blending_functions import linear_split_angle
+from blending_functions import branch_density
+from blending_functions import func_curvature
+from blending_functions import branch_length_function
+
+
 # FIXME: Move to species definitions file
 BoringWillowish = {
     sd.NAME: "Willowish Trunk",
