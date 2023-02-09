@@ -10,8 +10,8 @@ from panda3d.core import AmbientLight
 from direct.showbase.ShowBase import ShowBase
 from direct.gui.OnscreenText import OnscreenText
 
-from homebrew import BoringTree  # QuakingAspen, BlackTupelo, WeepingWillow, CaliforniaBlackOak
-from homebrew import sg  # Segment enum
+from tree_specs import Segment as sg
+from tree_species import boringBoringish as BoringTree
 from homebrew import expand_fully
 import geometry
 

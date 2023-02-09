@@ -15,8 +15,8 @@ from panda3d.core import Geom
 from panda3d.core import GeomNode
 from panda3d.core import NodePath
 
-from homebrew import sd  # Stem definition enum
-from homebrew import sg  # Segment enum
+from tree_specs import StemDefinition as sd
+from tree_specs import Segment as sg
 
 
 class GeometryData(enum.Enum):
