@@ -45,26 +45,29 @@ def continuations(s):
     rng = s[sg.RNG]
 
     if rest_segments > 0: # Not the last segment?
-        # Regular continuations
-        s[sg.CONTINUATIONS].append(
-            {
-                sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
-                sg.TREE_ROOT: s[sg.TREE_ROOT],
-                sg.STEM_ROOT: s[sg.STEM_ROOT],
-                sg.PARENT_SEGMENT: s,
-                sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
-            },
-        )
-
-        # Stem splits
-        if sd.SPLIT_CHANCE in definition:
+        # How many splits do we have?
+        if sd.SPLIT_CHANCE not in definition:
+            splits = 0
+        else:
             ratio = (segments - rest_segments) / segments
             accumulator = s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR]
             split_chance_func = definition[sd.SPLIT_CHANCE]
             splits, accumulator = split_chance_func(ratio, accumulator, rng)
-    
             s[sg.STEM_ROOT][sg.SPLIT_ACCUMULATOR] = accumulator
-            for idx in range(splits):
+
+        if splits == 0:
+            # Regular continuation
+            s[sg.CONTINUATIONS].append(
+                {
+                    sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
+                    sg.TREE_ROOT: s[sg.TREE_ROOT],
+                    sg.STEM_ROOT: s[sg.STEM_ROOT],
+                    sg.PARENT_SEGMENT: s,
+                    sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
+                },
+            )
+        else:
+            for idx in range(splits + 1):
                 s[sg.CONTINUATIONS].append(
                     {
                         sg.RNG_SEED: s[sg.RNG].randint(0, 2<<16 - 1),
@@ -72,7 +75,7 @@ def continuations(s):
                         sg.STEM_ROOT: s[sg.STEM_ROOT],
                         sg.PARENT_SEGMENT: s,
                         sg.REST_SEGMENTS: s[sg.REST_SEGMENTS] - 1,
-                        sg.IS_NEW_SPLIT: True,
+                        sg.IS_NEW_SPLIT: (idx, splits + 1),
                     },
                 )
 
@@ -154,9 +157,8 @@ def attach_node(s):
 
 def split_curvature(s):
     if sg.IS_NEW_SPLIT in s:
-        heading = s[sg.RNG].uniform(-1, 1) * 180.0
-
         definition = s[sg.STEM_ROOT][sg.DEFINITION]
+        split_idx, num_splits = s[sg.IS_NEW_SPLIT]
         age = s[sg.TREE_ROOT][sg.AGE]
         segments = definition[sd.SEGMENTS]
         rest_segments = s[sg.REST_SEGMENTS]
@@ -165,10 +167,9 @@ def split_curvature(s):
         split_angle_func = definition[sd.SPLIT_ANGLE]
         node = s[sg.NODE]
 
-        split_angle = split_angle_func(age, ratio, rng)
+        hpr = split_angle_func(age, ratio, split_idx, num_splits, rng)
 
-        node.set_p(node.get_p() - split_angle)
-        node.set_h(node.get_h() + heading)
+        node.set_hpr(node.get_hpr() + hpr)
 
 
 def branch_curvature(s):

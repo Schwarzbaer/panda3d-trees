@@ -9,7 +9,7 @@ from blending_functions import linear_split_angle
 from blending_functions import branch_density
 from blending_functions import func_curvature
 from blending_functions import branch_length_function
-
+from blending_functions import equal_split_rotation_func
 
 # FIXME: Move to species definitions file
 BoringWillowish = {
@@ -26,12 +26,7 @@ BoringWillowish = {
         linear(0.2, 1.0),  # Age-based magnitude of the overall effect
     ),
     sd.SPLIT_CHANCE: error_smoothing(constant(0.1)),
-    sd.SPLIT_ANGLE: linear_split_angle(
-        60,
-        30,
-        10,
-        linear(0.8, 1.0),
-    ),
+    sd.SPLIT_ANGLE: equal_split_rotation_func(linear(80.0, 20.0)),
     sd.BRANCH_DENSITY: branch_density(linear(10.5, 0.5)),  #constant(20.0)),
     sd.HELIOTROPISM: constant(0.0),
     sd.CHILD_DEFINITION: {
@@ -75,7 +70,9 @@ BoringBoringish = {
     sd.NAME: "Trunk",
     sd.SEGMENTS: 10,
     sd.LENGTH: constant(10.0),
-    sd.RADIUS: constant(1.0),
+    sd.RADIUS: constant(0.1),
+    sd.SPLIT_CHANCE: error_smoothing(constant(0.15)),
+    sd.SPLIT_ANGLE: equal_split_rotation_func(linear(80.0, 20.0), ),
     sd.BENDING: func_curvature(constant(0.0), constant(0.0), constant(0.0)),
     sd.HELIOTROPISM: constant(0.0),
 }

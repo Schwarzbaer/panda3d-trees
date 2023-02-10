@@ -1,3 +1,8 @@
+import math
+
+from panda3d.core import Vec3
+
+
 def constant(value):
     def inner(_age, _ratio, _rng):
         return value
@@ -90,6 +95,16 @@ def error_smoothing(split_chance_func):
         accumulator -= error_correction
 
         return splits, accumulator
+    return inner
+
+
+def equal_split_rotation_func(down_angle_func, rotation_noise_magnitude=0.5, down_angle_noise=40.0):
+    def inner(age, ratio, split_idx, num_splits, rng):
+        lobe_angle = 360.0 / num_splits
+        rotation_noise = (rng.random() - 0.5) * rotation_noise_magnitude
+        basic_rotation = lobe_angle * (split_idx + rotation_noise)
+        down_angle = down_angle_func(age, ratio, rng) + (rng.random() - 0.5) * 2.0 * down_angle_noise
+        return Vec3(basic_rotation, down_angle, 0)
     return inner
 
 
