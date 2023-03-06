@@ -52,7 +52,7 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
 
     # We'll be placing rings of vertices around the top of each segment,
     # and around the foot of stems.
-    def draw_vertex_circle(s, circle_segments, entry=sg.NODE):
+    def draw_vertex_circle(s, circle_segments, entry=sg.NODE, z_offset=0.0):
         # FIXME: Create vertices, draw triangles
         turtle.reparent_to(s[entry])
         for i in range(circle_segments):
@@ -60,7 +60,7 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
             vertex.addData3f(
                 s[sg.TREE_ROOT][sg.TREE_ROOT_NODE].get_relative_point(
                     turtle,
-                    Vec3(0, s[sg.RADIUS], 0),
+                    Vec3(0, s[sg.RADIUS], z_offset),
                 ),
             )
             normal.addData3f(
@@ -97,20 +97,22 @@ def trimesh(stem, circle_segments=10, bark_tris=True):
         s = segments.pop()
 
         # Untwisting
-        if sg.TREE_ROOT_NODE not in s and sg.IS_NEW_BRANCH not in s:
+        if sg.TREE_ROOT_NODE in s or sg.IS_NEW_BRANCH in s:
+            s[gd.TWIST_ANGLE] = 0
+        else:
             parent_twist = s[sg.PARENT_SEGMENT][gd.TWIST_ANGLE]
             own_twist = s[sg.NODE].get_h()
             s[gd.TWIST_ANGLE] = parent_twist + own_twist
-        else:
-            s[gd.TWIST_ANGLE] = 0
 
         # Rings at feet of first segments of a stem
         if sg.TREE_ROOT_NODE in s or sg.IS_NEW_BRANCH in s:
             if sg.TREE_ROOT_NODE in s:
                 circle_node = sg.TREE_ROOT_NODE
+                z_offset = 0
             else:
                 circle_node = sg.NODE
-            draw_vertex_circle(s, circle_segments, circle_node)
+                z_offset = -s[sg.LENGTH]
+            draw_vertex_circle(s, circle_segments, circle_node, z_offset=z_offset)
             s[gd.FOOT_RING_START_VERTEX] = current_vertex_index
             current_vertex_index += circle_segments
 

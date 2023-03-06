@@ -181,6 +181,7 @@ def branch_curvature(s):
         branch_angle_func = s[sg.DEFINITION][sd.BRANCH_ANGLE]
         node = s[sg.NODE]
         parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
+        length = s[sg.LENGTH] / s[sg.DEFINITION][sd.SEGMENTS]
 
         node.set_h(node.get_h() + branch_rotation_func(age, branch_ratio, rng))
         node.set_p(node.get_p() + branch_angle_func(age, branch_ratio, rng))
@@ -274,8 +275,8 @@ def apply_tropisms(s):
             0,
             -s[sg.PARENT_SEGMENT][sg.LENGTH] * (1.0 - s[sg.IS_NEW_BRANCH]),
         )
-    else:
-        node.set_z(node, length)
+    #else:
+    node.set_z(node, length)
 
 
 def expand(s, tropisms=True):
@@ -298,7 +299,7 @@ def expand(s, tropisms=True):
         design_tropism(s)
         heliotropism(s)
         apply_tropisms(s)
-    elif sg.IS_NEW_BRANCH not in s:
+    else:
         s[sg.NODE].set_z(s[sg.NODE], s[sg.LENGTH])
 
 
