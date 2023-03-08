@@ -217,9 +217,20 @@ def design_tropism(s):
         parent_node = s[sg.TREE_ROOT_NODE]
     else:
         parent_node = s[sg.PARENT_SEGMENT][sg.NODE]
+    design_tropic_weight_func = s[sg.STEM_ROOT][sg.DEFINITION][sd.DESIGN_TROPISM]
+    age = s[sg.TREE_ROOT][sg.AGE]
+    segments = s[sg.STEM_ROOT][sg.DEFINITION][sd.SEGMENTS]
+    rest_segments = s[sg.REST_SEGMENTS]
+    ratio = (segments - rest_segments) / segments
+    rng = s[sg.RNG]
+
+    design_tropic_weight = design_tropic_weight_func(age, ratio, rng)
 
     s[sg.DESIGN_TWIST] = node.get_h()
-    s[sg.DESIGN_TROPISM] = parent_node.get_relative_vector(node, up)
+    s[sg.DESIGN_TROPISM] = parent_node.get_relative_vector(node, up) * design_tropic_weight
+
+    if sg.DEFINITION in s and sd.NAME in s[sg.DEFINITION]:
+        print(s[sg.DESIGN_TROPISM])
 
 
 def heliotropism(s):
@@ -241,6 +252,9 @@ def heliotropism(s):
 
     s[sg.HELIOTROPISM] = local_heliotropic_direction * heliotropic_weight
 
+    if sg.DEFINITION in s and sd.NAME in s[sg.DEFINITION]:
+        print(s[sg.HELIOTROPISM])
+
 
 def apply_tropisms(s):
     if sg.TREE_ROOT_NODE in s:
@@ -258,6 +272,7 @@ def apply_tropisms(s):
 
     total_tropism = s[sg.DESIGN_TROPISM] + s[sg.HELIOTROPISM]
     total_tropism = node.get_relative_vector(parent_node, total_tropism)
+    total_tropism.normalize()
     pitch_tropism = Vec3(0, total_tropism.y, total_tropism.z)
     pitch_angle = pitch_tropism.angle_deg(Vec3(0, 0, 1))
     if pitch_tropism.y > 0.0:

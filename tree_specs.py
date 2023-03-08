@@ -13,7 +13,9 @@ class StemDefinition(enum.Enum):
     BRANCH_DENSITY   =  8
     BRANCH_ANGLE     =  9  # Pitch angle at which a branch splits off, uses branch point ratio along parent stem
     BRANCH_ROTATION  = 10  # Heading for the same.
-    HELIOTROPISM     = 11
+    # Tropism weight functions
+    DESIGN_TROPISM   = 11
+    HELIOTROPISM     = 12
 
 
 class Segment(enum.Enum):
